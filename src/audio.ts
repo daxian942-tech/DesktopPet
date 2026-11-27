@@ -6,6 +6,7 @@ import {
   playCreatureTouch,
   type CareVoiceAction,
 } from './creatureVoice';
+import { ANIMAL_VOICE_MP3_B64 } from './animalVoiceData';
 import type { AnimalSpecies } from './catSkins';
 
 const KEY_DOWN_SLOTS: readonly TypingSoundSlot[] = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];
@@ -697,9 +698,10 @@ class CatAudio {
    * Cute soft nose-boop squeak + tiny kitten sneeze puff!
    */
   public playBoopSneeze(): void {
-    // 非猫物种：用各自音高的「被戳一下」短音，而不是猫的鼻音 boop
+    // 非猫物种：优先真实录音的高音短片段（被戳一下的惊讶声），没有则合成
     if (this.species !== 'cat') {
       if (!this.enabled) return;
+      if (this.playAnimalSample(this.species, 1.22, 0.75)) return;
       const c = this.ensureAudioContext();
       if (!c) return;
       playCreatureTouch(c, this.species, 'boop');
@@ -776,9 +778,10 @@ class CatAudio {
    * Quick playful "bzzp / flick" chirp when tail is poked!
    */
   public playTailFlick(escalated = false): void {
-    // 非猫物种：用各自音高的「甩尾」下滑音
+    // 非猫物种：优先真实录音的更快片段（甩尾），没有则合成
     if (this.species !== 'cat') {
       if (!this.enabled) return;
+      if (this.playAnimalSample(this.species, 1.34, 0.62)) return;
       const c = this.ensureAudioContext();
       if (!c) return;
       playCreatureTouch(c, this.species, 'flick');
@@ -899,17 +902,85 @@ class CatAudio {
 
   /**
    * 动物专属叫声（喂食 / 喝水 / 玩耍 / 洗澡）。
-   * 猫走真实呼噜/喵叫以外的情境音，其余物种走程序化合成的独特叫声。
-   * 不建立 purr 图，避免给非猫动物挂上猫呼噜节点。
+   * 优先播放从 Wikimedia Commons 取的真实动物录音；
+   * 该物种没有真实录音时回退到程序化合成。
    */
   public playCreatureVoice(species: AnimalSpecies, action: CareVoiceAction): void {
     if (!this.enabled) return;
     try {
       const ctx = this.ensureAudioContext();
       if (!ctx) return;
+      // 真实录音优先。喂食/喝水放慢一点更像"边吃边哼"，玩耍加速。
+      const rate =
+        action === 'feed' ? 0.94 : action === 'drink' ? 0.88 : action === 'play' ? 1.06 : 1.0;
+      if (this.playAnimalSample(species, rate, 0.95)) return;
       playCreatureVoice(ctx, species, action);
     } catch {
       // 静默降级
+    }
+  }
+
+  private animalBuffers = new Map<AnimalSpecies, AudioBuffer>();
+  private animalDecodePromise: Promise<void> | null = null;
+  private animalDecodeFailedCtx: AudioContext | null = null;
+
+  /** 把内嵌的真实动物录音解码进缓存（每物种一次）。 */
+  private prewarmAnimalVoices(ctx: AudioContext): void {
+    if (this.animalBuffers.size > 0 || this.animalDecodePromise || this.animalDecodeFailedCtx === ctx) {
+      return;
+    }
+    const targetCtx = ctx;
+    const task = (async () => {
+      await Promise.all(
+        Object.entries(ANIMAL_VOICE_MP3_B64).map(async ([sp, b64]) => {
+          if (this.ctx !== targetCtx) return;
+          try {
+            const ab = CatAudio.base64ToArrayBuffer(b64);
+            const buf = await CatAudio.decodeAudioBuffer(targetCtx, ab);
+            if (this.ctx === targetCtx) this.animalBuffers.set(sp as AnimalSpecies, buf);
+          } catch {
+            // 单条解码失败不影响其他物种
+          }
+        }),
+      );
+      if (this.animalBuffers.size === 0) this.animalDecodeFailedCtx = targetCtx;
+    })()
+      .catch(() => {})
+      .finally(() => {
+        if (this.animalDecodePromise === task) this.animalDecodePromise = null;
+      });
+    this.animalDecodePromise = task;
+  }
+
+  /**
+   * 播放某物种的真实叫声片段。返回 false 表示该物种没有真实录音（调用方回退合成）。
+   * `rate` 用于变调（吃/喝放慢、玩耍加速），`gain` 是音量比例。
+   */
+  private playAnimalSample(species: AnimalSpecies, rate = 1, gain = 0.95): boolean {
+    if (species === 'cat') return false; // 猫有自己的呼噜/喵叫体系
+    if (!(species in ANIMAL_VOICE_MP3_B64)) return false;
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return false;
+    if (!this.animalBuffers.has(species)) {
+      this.prewarmAnimalVoices(ctx);
+      return false; // 首次还没解好，这一次先静默，下次就命中
+    }
+    try {
+      const buf = this.animalBuffers.get(species)!;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = Math.max(0.6, Math.min(1.5, rate));
+      const g = ctx.createGain();
+      g.gain.value = Math.max(0, Math.min(1, gain)) * 0.9;
+      src.connect(g);
+      g.connect(ctx.destination);
+      src.onended = () => {
+        try { src.disconnect(); g.disconnect(); } catch { /* ignore */ }
+      };
+      src.start();
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -919,10 +990,24 @@ class CatAudio {
    */
   public setSpecies(species: AnimalSpecies): void {
     if (this.species === species) return;
-    this.species = species;
-    // 切走时立刻停掉旧物种的持续性声音，避免猫呼噜残留在新动物身上
+
+    // 关键：必须在改 species 之前按「旧物种」的身份把持续性声音停掉。
+    // 否则改成非猫后再调 setPurrIntensity(0) 会走非猫分支，
+    // 猫的真实呼噜 MP3 循环（purrSource）就永远停不掉，会一直响。
+    if (this.species === 'cat') {
+      // 走猫分支的静音路径：把 masterGain 拉到 0 并真正 stop 掉 purrSource
+      if (this.ctx && this.masterGain) {
+        try {
+          this.masterGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.05);
+        } catch {
+          // 上下文已关闭时忽略
+        }
+      }
+      this.stopPurrSource();
+    }
     this.stopCreaturePurr();
-    this.setPurrIntensity(0);
+    this.species = species;
+    this.currentIntensity = 0;
   }
 
   public getSpecies(): AnimalSpecies {
@@ -955,10 +1040,21 @@ class CatAudio {
       if (this.currentIntensity <= 0.01) return;
       const c = this.ensureAudioContext();
       if (!c) return;
-      const dur = playCreaturePurr(c, this.species, this.currentIntensity);
+
+      // 有真实录音就用放慢的片段当满足声（更像原型动物的低哼），
+      // 没有才用合成喉音。
+      let nextSec = 0;
+      const usedSample = this.playAnimalSample(this.species, 0.72, 0.5);
+      if (usedSample) {
+        const buf = this.animalBuffers.get(this.species);
+        const dur = buf ? buf.duration / 0.72 : 1.0;
+        nextSec = Math.max(0.5, dur * 0.85);
+      } else {
+        const dur = playCreaturePurr(c, this.species, this.currentIntensity);
+        nextSec = Math.max(0.32, dur * 0.9);
+      }
       if (typeof window !== 'undefined') {
-        // 略短于音频长度就接上下一次，形成连续的咕噜
-        this.creaturePurrTimer = window.setTimeout(tick, Math.max(320, dur * 900));
+        this.creaturePurrTimer = window.setTimeout(tick, nextSec * 1000);
       }
     };
     tick();
