@@ -13,6 +13,16 @@ import {
   type KeyboardThemeId,
 } from './keyboardLayout';
 import {
+  loadReminders,
+  saveReminders,
+  sortReminders,
+  normalizeReminder,
+  createReminderScheduler,
+  type Reminder,
+  type ReminderRepeat,
+  type ReminderScheduler,
+} from './reminders';
+import {
   applyDomTranslations,
   isMacPlatform,
   localizeBreedName,
@@ -123,6 +133,8 @@ let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 let activeTab: MenuTabId = 'appearance';
 let settingsPatchSeq = 0;
+/** 是否运行在 Tauri 里（bootstrap 里探测后回填），提醒触发等 IPC 要据此判断。 */
+let inTauri = true;
 let adminStatus: AdminStatus = { supported: false, elevated: false, macInputDiag: false };
 
 const menuEl = document.getElementById('context-menu') as HTMLDivElement;
@@ -286,6 +298,206 @@ function setToggleSwitch(id: string, on: boolean): void {
   if (!el) return;
   el.classList.toggle('is-on', on);
   el.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+
+/* ---------------- 互动模块：定时提醒 ---------------- */
+
+let reminderList: Reminder[] = [];
+let reminderRepeat: ReminderRepeat = 'once';
+let reminderScheduler: ReminderScheduler | null = null;
+let reminderCountdownTimer: number | null = null;
+
+function reminderEls() {
+  return {
+    list: document.getElementById('reminder-list'),
+    empty: document.getElementById('reminder-empty'),
+    next: document.getElementById('reminder-next'),
+    time: document.getElementById('reminder-time') as HTMLInputElement | null,
+    text: document.getElementById('reminder-text') as HTMLInputElement | null,
+  };
+}
+
+function fmtRelative(sec: number): string {
+  if (sec < 60) return `${sec} 秒后`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} 分钟后`;
+  const h = Math.floor(min / 60);
+  return `${h} 小时 ${min % 60} 分后`;
+}
+
+function renderReminderNext(): void {
+  const { next } = reminderEls();
+  if (!next) return;
+  const sec = reminderScheduler?.nextIn() ?? null;
+  if (sec === null) {
+    next.textContent = '未设置';
+    return;
+  }
+  next.textContent = fmtRelative(sec);
+}
+
+function renderReminderList(): void {
+  const { list, empty } = reminderEls();
+  if (!list) return;
+  list.innerHTML = '';
+  const sorted = sortReminders(reminderList);
+  if (sorted.length === 0) {
+    empty?.classList.remove('hidden');
+  } else {
+    empty?.classList.add('hidden');
+  }
+  for (const r of sorted) {
+    const row = document.createElement('div');
+    row.className = 'reminder-item' + (r.enabled ? '' : ' is-off');
+    row.dataset.remid = r.id;
+
+    const time = document.createElement('span');
+    time.className = 'reminder-item-time';
+    time.textContent = r.time;
+
+    const main = document.createElement('span');
+    main.className = 'reminder-item-main';
+    const txt = document.createElement('span');
+    txt.className = 'reminder-item-text';
+    txt.textContent = r.text;
+    const tag = document.createElement('span');
+    tag.className = 'reminder-item-tag';
+    tag.textContent = r.repeat === 'daily' ? '每天重复' : '仅一次';
+    main.append(txt, tag);
+
+    const actions = document.createElement('span');
+    actions.className = 'reminder-item-actions';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'reminder-mini-toggle' + (r.enabled ? ' is-on' : '');
+    toggle.title = r.enabled ? '关闭这条提醒' : '开启这条提醒';
+    toggle.dataset.remtoggle = r.id;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'reminder-del';
+    del.textContent = '✕';
+    del.title = '删除这条提醒';
+    del.dataset.remdel = r.id;
+    actions.append(toggle, del);
+
+    row.append(time, main, actions);
+    list.appendChild(row);
+  }
+  renderReminderNext();
+}
+
+function persistReminders(): void {
+  saveReminders(reminderList);
+  renderReminderList();
+  reminderScheduler?.tickNow();
+}
+
+function addReminderFromForm(): void {
+  const { time, text } = reminderEls();
+  if (!time) return;
+  const t = time.value || '09:00';
+  const body = (text?.value || '').trim() || '时间到啦';
+  reminderList.push(
+    normalizeReminder({
+      time: t,
+      text: body,
+      repeat: reminderRepeat,
+      enabled: true,
+    }),
+  );
+  if (text) text.value = '';
+  persistReminders();
+}
+
+/**
+ * 到点：让主窗口跑到屏幕中间，并让桌宠弹出大字提醒。
+ * 桌宠窗口不在菜单里，靠 Tauri 事件通知。
+ */
+async function fireReminder(r: Reminder): Promise<void> {
+  // 记录已触发，避免同日重复
+  const now = new Date();
+  const ymd = `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, '0')}-${`${now.getDate()}`.padStart(2, '0')}`;
+  reminderList = reminderList.map((x) =>
+    x.id === r.id ? { ...x, lastFired: r.repeat === 'once' ? ymd : ymd } : x,
+  );
+  saveReminders(reminderList);
+  renderReminderList();
+
+  if (!inTauri) return;
+  try {
+    // 1) 桌宠跑到屏幕正中
+    await invoke('move_pet_to_center');
+    // 2) 通知主窗口展示提醒大字
+    await emit('kuro-reminder-fire', { text: r.text, time: r.time });
+  } catch {
+    // 忽略：窗口移动失败也要尽量把提示送达
+    try {
+      await emit('kuro-reminder-fire', { text: r.text, time: r.time });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function initReminders(): void {
+  reminderList = loadReminders();
+  reminderScheduler = createReminderScheduler(() => reminderList);
+  reminderScheduler.start((r) => {
+    void fireReminder(r);
+  });
+
+  const addBtn = document.getElementById('reminder-add');
+  addBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    addReminderFromForm();
+  });
+
+  const textInput = document.getElementById('reminder-text') as HTMLInputElement | null;
+  textInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addReminderFromForm();
+    }
+  });
+
+  // 重复方式切换
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-remrepeat]')) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reminderRepeat = btn.dataset.remrepeat === 'daily' ? 'daily' : 'once';
+      for (const b of document.querySelectorAll<HTMLButtonElement>('[data-remrepeat]')) {
+        b.classList.toggle('active', b === btn);
+      }
+    });
+  }
+
+  // 列表内：开关键 / 删除（委托到列表容器）
+  const list = document.getElementById('reminder-list');
+  list?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const toggle = target.closest<HTMLElement>('[data-remtoggle]');
+    if (toggle) {
+      e.stopPropagation();
+      const id = toggle.dataset.remtoggle!;
+      reminderList = reminderList.map((x) => (x.id === id ? { ...x, enabled: !x.enabled } : x));
+      persistReminders();
+      return;
+    }
+    const del = target.closest<HTMLElement>('[data-remdel]');
+    if (del) {
+      e.stopPropagation();
+      const id = del.dataset.remdel!;
+      reminderList = reminderList.filter((x) => x.id !== id);
+      persistReminders();
+    }
+  });
+
+  renderReminderList();
+
+  // 每 20 秒刷新一次「还有多久」的倒计时文案
+  if (reminderCountdownTimer === null) {
+    reminderCountdownTimer = window.setInterval(renderReminderNext, 20_000);
+  }
 }
 
 function syncUI(): void {
@@ -866,7 +1078,7 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  let inTauri = true;
+  // 复用模块级 inTauri（默认 true），探测失败时置 false
   try {
     const [loadedSettings, loadedCats, ver, cachedUpd, resolvedLoc, loadedAdmin] = await Promise.all([
       invoke<AppSettings>('get_settings'),
@@ -925,6 +1137,7 @@ async function bootstrap(): Promise<void> {
   syncUI();
   renderFooterUpdateState();
   switchTab(activeTab);
+  initReminders();
   resolveInitReady();
 
   if (inTauri) {

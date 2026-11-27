@@ -10,6 +10,16 @@
     <canvas id="pet-canvas-3d" class="hidden"></canvas>
     <div id="agent-bubble" class="agent-bubble hidden" role="status" aria-live="polite"></div>
 
+    <!-- 提醒到点：桌宠跑到屏幕中央后弹出的大字提醒 -->
+    <div id="reminder-alert" class="reminder-alert hidden" role="alert" aria-live="assertive">
+      <span class="ra-icon">⏰</span>
+      <div class="ra-body">
+        <div class="ra-time" id="ra-time">09:00</div>
+        <div class="ra-text" id="ra-text">时间到啦</div>
+      </div>
+      <button class="ra-close" id="ra-close" type="button" aria-label="关闭提醒">✕</button>
+    </div>
+
     <!-- Tap the pet reveals four quick-action buttons right above its head. -->
     <div id="care-quickbar" class="care-quickbar hidden" role="toolbar" aria-label="照顾桌宠快捷操作">
       <button class="care-quick-btn" data-care-action="feed" type="button" title="喂食" aria-label="喂食">

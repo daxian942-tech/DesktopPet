@@ -347,6 +347,12 @@ function closeCareQuickbar(): void {
   syncCareQuickbarBounds();
 }
 
+// 提醒气泡的关闭按钮
+document.getElementById('ra-close')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hideReminderAlert();
+});
+
 // Hovering the bar itself must not close it - the cursor has to leave the
 // animal to reach the buttons, so treat both surfaces as one hover region.
 careQuickbarEl?.addEventListener('mouseenter', () => {
@@ -416,8 +422,56 @@ function performPetCareAction(action: PetCareAction): void {
   lastCareNeedKey = '';
 }
 
-function startPetCareTicker(): void {
-  const tick = (): void => {
+/* ---------------- 提醒到点的大字气泡 ---------------- */
+let reminderHideTimer: number | null = null;
+
+function showReminderAlert(text: string, time: string): void {
+  const el = document.getElementById('reminder-alert');
+  const textEl = document.getElementById('ra-text');
+  const timeEl = document.getElementById('ra-time');
+  if (!el || !textEl || !timeEl) return;
+
+  textEl.textContent = text;
+  timeEl.textContent = time || '';
+  timeEl.style.display = time ? '' : 'none';
+
+  el.classList.remove('hidden', 'is-out');
+  // 重放进入动画
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+
+  // 到点叫一声（走当前物种的叫声）
+  if (settings.soundEnabled !== false) {
+    const species = engine.customSkin?.species ?? 'cat';
+    catAudio.playCreatureVoice(species, 'play');
+  }
+
+  // 让桌宠做个"被惊醒"的动作，读起来像它来叫你
+  if (isIndependentSpecies(engine.customSkin)) {
+    engine.triggerCareMood('happy', 2.4);
+    engine3d?.triggerCareMood('happy', 2.4);
+  }
+
+  if (reminderHideTimer !== null) window.clearTimeout(reminderHideTimer);
+  reminderHideTimer = window.setTimeout(() => hideReminderAlert(), 12_000);
+}
+
+function hideReminderAlert(): void {
+  const el = document.getElementById('reminder-alert');
+  if (!el || el.classList.contains('hidden')) return;
+  el.classList.add('is-out');
+  if (reminderHideTimer !== null) {
+    window.clearTimeout(reminderHideTimer);
+    reminderHideTimer = null;
+  }
+  window.setTimeout(() => {
+    el.classList.remove('is-out');
+    el.classList.add('hidden');
+  }, 300);
+}
+
+function startPetCareTicker(): void {  const tick = (): void => {
     const st = tickPetCare();
     updatePetCareUI(st);
     renderCareQuickbar(st);
@@ -1691,6 +1745,11 @@ async function bootstrap(): Promise<void> {
   await listen<string>('kuro-pet-care-action', (ev) => {
     const a = String(ev.payload || '');
     if (isPetCareAction(a)) performPetCareAction(a);
+  });
+
+  // 提醒到点：菜单侧已把窗口移来中央，这里负责弹出大字并叫一声
+  await listen<{ text: string; time: string }>('kuro-reminder-fire', (ev) => {
+    showReminderAlert(ev.payload?.text || '时间到啦', ev.payload?.time || '');
   });
   // Standalone menu just opened — push the current care state right away.
   await listen('kuro-pet-care-request', () => {

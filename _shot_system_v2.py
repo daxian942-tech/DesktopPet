@@ -77,6 +77,15 @@ try:
         )
         pg = b.new_page(viewport={"width": 520, "height": 520}, device_scale_factor=2)
         pg.add_init_script(MOCK)
+        # 预置两条提醒，验收「互动」页的提醒列表
+        pg.add_init_script("""
+          try {
+            localStorage.setItem('desktop-pet-reminders-v1', JSON.stringify([
+              {id:'r1', time:'09:30', text:'起来喝水，别一直坐着', repeat:'daily', enabled:true},
+              {id:'r2', time:'14:00', text:'开会前整理一下周报', repeat:'once', enabled:false}
+            ]));
+          } catch (e) {}
+        """)
         pg.goto(f"http://127.0.0.1:{port}/menu.html")
         pg.wait_for_timeout(1200)
 

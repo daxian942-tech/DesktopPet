@@ -267,6 +267,32 @@
 
         <!-- Tab 2: Interaction (Keyboard, Tail, Companion Toggles) -->
         <div class="tab-panel hidden" data-tab-panel="interact">
+          <!-- 互动模块（首位）：定时提醒。到点桌宠自动跑到屏幕中间提示。 -->
+          <section class="menu-card reminder-card">
+            <div class="card-head">
+              <span class="card-title">⏰ 定时提醒</span>
+              <span class="card-chip" id="reminder-next">未设置</span>
+            </div>
+
+            <div class="reminder-form">
+              <div class="reminder-time-row">
+                <input type="time" id="reminder-time" class="reminder-time" value="09:00" aria-label="提醒时间" />
+                <div class="seg-control seg-2 reminder-repeat">
+                  <button class="seg-btn active" data-remrepeat="once" type="button">一次</button>
+                  <button class="seg-btn" data-remrepeat="daily" type="button">每天</button>
+                </div>
+              </div>
+              <div class="reminder-text-row">
+                <input type="text" id="reminder-text" class="reminder-text" maxlength="40"
+                       placeholder="提醒内容，如：起来喝水" aria-label="提醒内容" />
+                <button class="reminder-add" id="reminder-add" type="button">＋ 添加</button>
+              </div>
+            </div>
+
+            <div class="reminder-list" id="reminder-list"></div>
+            <div class="reminder-empty" id="reminder-empty">还没有提醒，设一个试试</div>
+          </section>
+
           <!-- Card 1: Keyboard & Tail -->
           <section class="menu-card">
             <div class="card-head">

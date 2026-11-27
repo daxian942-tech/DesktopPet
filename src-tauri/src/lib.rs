@@ -2550,11 +2550,88 @@ fn reset_position(app: AppHandle) {
     reset_window_position(&app);
 }
 
+/// 把桌宠窗口移到当前显示器工作区的正中间（提醒到点时用）。
+/// 与 reset_position 的区别：这里落在中心而不是右下角，且不改 peek 状态。
+#[tauri::command]
+fn move_pet_to_center(app: AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(win) = handle.get_webview_window("main") else {
+            return;
+        };
+        let size = win.outer_size().unwrap_or(tauri::PhysicalSize::new(420, 440));
+        #[cfg(windows)]
+        let (w_px, h_px) = if win_needs_win7_ulw() {
+            win7_layered::get_rect()
+                .map(|(_, _, w, h)| (w, h))
+                .unwrap_or((size.width as i32, size.height as i32))
+        } else {
+            (size.width as i32, size.height as i32)
+        };
+        #[cfg(not(windows))]
+        let (w_px, h_px) = (size.width as i32, size.height as i32);
+
+        // 光标所在显示器优先，退回当前窗口所在显示器，再退回主屏
+        let monitor = handle
+            .cursor_position()
+            .ok()
+            .and_then(|p| {
+                handle
+                    .monitor_from_point(p.x, p.y)
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| win.current_monitor().ok().flatten())
+            .or_else(|| win.primary_monitor().ok().flatten());
+
+        let (wx, wy, ww, wh) = if let Some(mon) = monitor {
+            let work = mon.work_area();
+            if work.size.width > 0 && work.size.height > 0 {
+                (
+                    work.position.x,
+                    work.position.y,
+                    work.size.width as i32,
+                    work.size.height as i32,
+                )
+            } else {
+                let mp = mon.position();
+                let ms = mon.size();
+                (mp.x, mp.y, ms.width as i32, ms.height as i32)
+            }
+        } else {
+            (0, 0, 1920, 1080)
+        };
+
+        let target_x = wx + (ww - w_px) / 2;
+        // 动物的身体在窗口偏下，往上抬一点让它在视觉中心而不是窗口中心
+        let target_y = wy + (wh - h_px) / 2 - (h_px as f64 * 0.06) as i32;
+
+        #[cfg(windows)]
+        if win_needs_win7_ulw() {
+            win7_layered::set_position(target_x, target_y);
+            if win7_layered::is_overlay_active() {
+                let _ = win.set_position(PhysicalPosition::new(target_x, target_y));
+            }
+        } else {
+            let _ = win.set_position(PhysicalPosition::new(target_x, target_y));
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = win.set_position(PhysicalPosition::new(target_x, target_y));
+        }
+
+        let state = handle.state::<AppState>();
+        let mut s = state.settings.lock().unwrap();
+        s.x = Some(target_x);
+        s.y = Some(target_y);
+        save_settings(&s);
+    });
+}
+
 #[tauri::command]
 fn create_desktop_shortcut() -> Result<String, String> {
     config::create_desktop_shortcut()
 }
-
 #[tauri::command]
 fn quit_app(app: AppHandle) {
     shutdown_pet_windows();
@@ -5998,6 +6075,7 @@ pub fn run() {
             win7_sync_overlay,
             save_window_pos,
             reset_position,
+            move_pet_to_center,
             create_desktop_shortcut,
             get_cached_update_info,
             check_for_update,
