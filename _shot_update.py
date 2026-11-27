@@ -31,7 +31,7 @@ MOCK = r"""
 window.__TAURI_INTERNALS__ = {
   invoke: async (cmd, args) => {
     const HK = 'kurocat_pet_care_v1';
-    if (cmd === 'get_app_version') return '1.0.0';
+    if (cmd === 'get_app_version') return '1.0.1';
     if (cmd === 'get_resolved_locale') return 'zh-CN';
     if (cmd === 'get_admin_status') return { supported: false, elevated: false };
     if (cmd === 'get_cached_update_info') return null;
@@ -44,13 +44,13 @@ window.__TAURI_INTERNALS__ = {
     if (cmd === 'check_for_update') {
       const mode = window.__UPDATE_MODE__ || 'current';
       if (mode === 'current') return {
-        currentVersion: '1.0.0', latestVersion: '1.0.0', hasUpdate: false,
+        currentVersion: '1.0.1', latestVersion: '1.0.1', hasUpdate: false,
         releaseUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.0',
         downloadUrl: null, assetSha256: null, assetSize: null,
         installKind: 'windows-nsis', notesSummary: ''
       };
       return {
-        currentVersion: '1.0.0', latestVersion: '1.2.0', hasUpdate: true,
+        currentVersion: '1.0.1', latestVersion: '1.2.0', hasUpdate: true,
         releaseUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.2.0',
         downloadUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/download/v1.2.0/DesktopPet-setup-v1.2.0.exe',
         assetName: 'DesktopPet-setup-v1.2.0.exe',
@@ -84,14 +84,14 @@ try:
         page.wait_for_timeout(1800)
 
         hint = page.locator("#update-hint")
-        print("initial footer:", hint.inner_text() if hint.count() else "NOT FOUND")
+        print("v101 initial footer:", hint.inner_text() if hint.count() else "NOT FOUND")
         page.screenshot(path=os.path.join(OUT, "update-01-initial.png"), full_page=True)
 
         # 场景一：检查更新，自有仓库返回已是最新
         page.evaluate("window.__UPDATE_MODE__ = 'current'")
         page.locator("#btn-check-update").click()
         page.wait_for_timeout(1200)
-        print("after check (current):", hint.inner_text())
+        print("v101 after check (current):", hint.inner_text())
         page.screenshot(path=os.path.join(OUT, "update-02-up-to-date.png"), full_page=True)
 
         # 场景二：模拟发现新版
