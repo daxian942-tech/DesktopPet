@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    html,body{margin:0;width:100%;height:100%;background:#dfe6ea;overflow:hidden}
+    .stage{position:relative;width:100%;height:100%;
+      background:radial-gradient(circle at 50% 62%, #eef3f5 0%, #cfd9df 70%)}
+    /* pet head stand-in */
+    .head{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);
+      width:190px;height:170px;border-radius:50%;background:#3a3735;
+      box-shadow:inset 0 -8px 18px rgba(0,0,0,.25)}
+    .head::before,.head::after{content:'';position:absolute;top:34px;width:22px;height:26px;border-radius:50%;background:#fff}
+    .head::before{left:56px}.head::after{right:56px}
+    .cap{position:absolute;left:50%;top:calc(58% - 118px);transform:translateX(-50%);
+      color:#8b8379;font:600 12px system-ui,sans-serif}
+  </style>
+  <link rel="stylesheet" href="./dist/assets/i18n-AwbpFb9r.css">
+</head>
+<body>
+  <div class="stage">
+    <div class="cap">↑ 头顶快捷按钮条（点击桌宠后出现）</div>
+    <!-- real markup copied verbatim from index.html -->
+    <div id="care-quickbar" class="care-quickbar" role="toolbar" aria-label="照顾桌宠快捷操作"
+         style="left:50%; top:calc(58% - 250px); transform:translateX(-50%)">
+      <button class="care-quick-btn is-recommended" data-care-action="feed" type="button" title="喂食" aria-label="喂食">
+        <span class="cq-emoji">🍖</span><span class="cq-label">喂食</span>
+      </button>
+      <button class="care-quick-btn" data-care-action="drink" type="button" title="喝水" aria-label="喝水">
+        <span class="cq-emoji">💧</span><span class="cq-label">喝水</span>
+      </button>
+      <button class="care-quick-btn" data-care-action="play" type="button" title="玩耍" aria-label="玩耍">
+        <span class="cq-emoji">🎾</span><span class="cq-label">玩耍</span>
+      </button>
+      <button class="care-quick-btn" data-care-action="bath" type="button" title="洗澡" aria-label="洗澡">
+        <span class="cq-emoji">🛁</span><span class="cq-label">洗澡</span>
+      </button>
+    </div>
+    <div class="head"></div>
+  </div>
+</body>
+</html>
