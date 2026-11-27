@@ -90,6 +90,15 @@
       <div class="tab-body" id="menu-tab-body">
         <!-- Tab 1: Appearance (Looks, Scale, Style) -->
         <div class="tab-panel" data-tab-panel="appearance">
+          <!-- Card 1: Breeds — 大图标网格，放到外观页最前面（最常点的一项） -->
+          <section class="menu-card">
+            <div class="card-head">
+              <span class="card-title" data-i18n="menu.section_breed">角色外观</span>
+              <span class="card-chip" data-i18n-title="menu.breed_mcp_title" title="支持通过 MCP 让 AI 定制专属外观">MCP</span>
+            </div>
+            <div class="breed-chips" id="breed-pills"></div>
+          </section>
+
           <!-- Card K: keyboard finish pinned to the default tab so it is
                reachable in one click instead of buried under "Interaction". -->
           <section class="menu-card kb-quick-card">
@@ -102,13 +111,15 @@
               <button class="kb-pill kb-theme-pill" data-kbtheme="mist" data-i18n="menu.kb_theme_mist" type="button">雾蓝夜航</button>
               <button class="kb-pill kb-theme-pill" data-kbtheme="clay" data-i18n="menu.kb_theme_clay" type="button">陶土暖阳</button>
             </div>
-            <div class="seg-control seg-2 kb-quick-seg">
-              <button class="seg-btn" data-kblayout="65" data-i18n="menu.kb_65" type="button">65% 紧凑</button>
-              <button class="seg-btn" data-kblayout="108" data-i18n="menu.kb_108" type="button">108 全尺寸</button>
-            </div>
-            <div class="seg-control seg-2 kb-quick-seg">
-              <button class="seg-btn" data-kborient="cat" data-i18n="menu.kb_cat" type="button">面向桌宠</button>
-              <button class="seg-btn" data-kborient="viewer" data-i18n="menu.kb_viewer" type="button">面向观众</button>
+            <div class="kb-quick-row">
+              <div class="seg-control seg-2 kb-quick-seg">
+                <button class="seg-btn" data-kblayout="65" data-i18n="menu.kb_65" type="button">65% 紧凑</button>
+                <button class="seg-btn" data-kblayout="108" data-i18n="menu.kb_108" type="button">108 全尺寸</button>
+              </div>
+              <div class="seg-control seg-2 kb-quick-seg">
+                <button class="seg-btn" data-kborient="cat" data-i18n="menu.kb_cat" type="button">面向桌宠</button>
+                <button class="seg-btn" data-kborient="viewer" data-i18n="menu.kb_viewer" type="button">面向观众</button>
+              </div>
             </div>
           </section>
 
@@ -131,15 +142,6 @@
               <div class="pc-bar"><span class="pc-ico">⚡</span><div class="pc-track"><div class="pc-fill" id="pc-energy"></div></div><span class="pc-label" data-i18n="menu.pc_energy">精力</span></div>
               <div class="pc-bar"><span class="pc-ico">🫧</span><div class="pc-track"><div class="pc-fill" id="pc-clean"></div></div><span class="pc-label" data-i18n="menu.pc_clean">清洁</span></div>
             </div>
-          </section>
-
-          <!-- Card 1: Breeds -->
-          <section class="menu-card">
-            <div class="card-head">
-              <span class="card-title" data-i18n="menu.section_breed">角色外观</span>
-              <span class="card-chip" data-i18n-title="menu.breed_mcp_title" title="支持通过 MCP 让 AI 定制专属外观">MCP</span>
-            </div>
-            <div class="breed-chips" id="breed-pills"></div>
           </section>
 
           <!-- Card 2: Pet Scale & Opacity -->

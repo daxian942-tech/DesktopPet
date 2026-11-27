@@ -1032,7 +1032,11 @@ fn update_settings(app: AppHandle, state: State<'_, AppState>, mut patch: AppSet
     patch
 }
 
-const SIDE_MENU_LOGICAL_W: f64 = 298.0;
+/// 设置菜单是正方形面板：宽高取同一个边长。
+/// 520 逻辑像素能放下 3 列大图标网格，1080p 屏幕也留得下边距。
+const SIDE_MENU_LOGICAL_W: f64 = 520.0;
+/// 正方形面板的边长下限，屏幕再矮也不会缩到看不清。
+const SIDE_MENU_MIN_SIDE: f64 = 420.0;
 
 /// Computes a non-overlapping physical position `(mx, my)` for the floating menu popover
 /// beside the cat window: prefers LEFT (since the cat defaults to bottom-right), then RIGHT,
@@ -1122,13 +1126,19 @@ fn current_pet_rect_and_monitor(app: &AppHandle) -> Option<((i32, i32, i32, i32)
 fn side_menu_geometry(app: &AppHandle) -> Option<(i32, i32, f64, f64)> {
     let (pet_rect, work_area, sf) = current_pet_rect_and_monitor(app)?;
     let mon_logical_h = work_area.3 as f64 / sf.max(0.5);
-    let menu_logical_h = (mon_logical_h - 24.0).clamp(360.0, 608.0);
-    let mw = (SIDE_MENU_LOGICAL_W * sf).round() as i32;
-    let mh = (menu_logical_h * sf).round() as i32;
+    let mon_logical_w = work_area.2 as f64 / sf.max(0.5);
+    // 正方形面板：宽高取同一个边长，屏幕越窄/越矮就整体等比收缩，
+    // 但不会低于 SIDE_MENU_MIN_SIDE，保证三列大图标仍然看得清。
+    let side = SIDE_MENU_LOGICAL_W
+        .min(mon_logical_h - 24.0)
+        .min(mon_logical_w - 24.0)
+        .max(SIDE_MENU_MIN_SIDE);
+    let mw = (side * sf).round() as i32;
+    let mh = (side * sf).round() as i32;
     let gap = (10.0 * sf).round() as i32;
     let pad = (10.0 * sf).round() as i32;
     let (mx, my) = compute_side_menu_pos(pet_rect, work_area, (mw, mh), gap, pad);
-    Some((mx, my, SIDE_MENU_LOGICAL_W, menu_logical_h))
+    Some((mx, my, side, side))
 }
 
 fn reposition_context_menu_if_open(app: &AppHandle) {
@@ -6279,15 +6289,17 @@ mod side_menu_layout_tests {
     }
 
     #[test]
-    fn places_scheme_a_298px_side_menu_with_zero_overlap() {
-        assert!((super::SIDE_MENU_LOGICAL_W - 298.0).abs() < 1e-6);
+    fn places_square_side_menu_with_zero_overlap() {
+        assert!((super::SIDE_MENU_LOGICAL_W - 520.0).abs() < 1e-6);
+        assert!((super::SIDE_MENU_MIN_SIDE - 420.0).abs() < 1e-6);
         let pet = (1580, 620, 315, 410);
         let work = (0, 0, 1920, 1040);
-        let menu = (298, 568);
+        let menu = (520, 520);
         let (mx, my) = compute_side_menu_pos(pet, work, menu, 10, 10);
-        assert_eq!(mx, 1580 - 298 - 10);
+        assert_eq!(mx, 1580 - 520 - 10);
         assert!(mx + menu.0 <= pet.0);
-        assert_eq!(my, 620 + 410 - 568);
+        // 正方形 520 面板底部对齐猫窗口底部，再按工作区下边界收进屏幕
+        assert_eq!(my, (620 + 410 - 520).min(1040 - 520 - 10));
     }
 
     #[test]

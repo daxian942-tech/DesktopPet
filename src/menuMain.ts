@@ -1,5 +1,7 @@
 import './style.css';
 import './desktopPetTheme.css';
+// 系统页全新视觉层：正方形面板 + 大图标。放在最后以保证覆盖优先级。
+import './systemPanel.css';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { DEFAULT_TAIL_KEY_IDS, type KeyboardOrientation, type TailKeyMode } from './catEngine';
@@ -257,7 +259,20 @@ function renderBreedPills(): void {
     btn.className = 'breed-pill';
     btn.dataset.breed = cat.id;
     const label = formatBreedPillLabel(cat);
-    btn.textContent = label;
+    const displayName = localizeBreedName(cat.id, cat.name, cat.builtin);
+    const emoji = cat.emoji || '🐱';
+    const bareName = displayName.startsWith(emoji)
+      ? displayName.slice(emoji.length).trimStart() || displayName
+      : displayName.replace(/^[^\u4e00-\u9fffA-Za-z]+/, '').trim() || displayName;
+
+    // 大图标卡片：上面一个大 emoji，下面动物名字，点起来比原来的文字芯片好按。
+    const icon = document.createElement('span');
+    icon.className = 'breed-icon';
+    icon.textContent = emoji;
+    const name = document.createElement('span');
+    name.className = 'breed-name';
+    name.textContent = bareName;
+    btn.append(icon, name);
     btn.title = label;
     const accent = cat.accentColor || (cat.id === 'ragdoll' ? '#7ac7ff' : '#c8f538');
     btn.style.setProperty('--pill-accent', accent);
