@@ -3,9 +3,11 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
-const QIANYI_API_LATEST: &str = "https://qianyi.one/kurocat/releases/latest.json";
-const REPO_API_LATEST: &str = "https://api.github.com/repos/qianyiai/KuroCat/releases/latest";
-const REPO_RELEASES_PAGE: &str = "https://github.com/qianyiai/KuroCat/releases/latest";
+// DesktopPet owns its release channel. No upstream mirror: the source of truth
+// is this project's GitHub Releases, so version numbers can never drift back to
+// the original KuroCat 5.x line.
+const REPO_API_LATEST: &str = "https://api.github.com/repos/daxian942-tech/DesktopPet/releases/latest";
+const REPO_RELEASES_PAGE: &str = "https://github.com/daxian942-tech/DesktopPet/releases/latest";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -125,11 +127,16 @@ fn detect_install_kind() -> &'static str {
 fn select_asset<'a>(assets: &'a [GhAsset], install_kind: &str) -> Option<&'a GhAsset> {
     let want_108 = cfg!(feature = "layout-108");
     match install_kind {
+        // DesktopPet assets: DesktopPet-setup-v1.0.0.exe / DesktopPet-portable-v1.0.0.exe
+        // Legacy KuroCat assets are kept as a fallback for older releases.
         "windows-nsis" => assets
             .iter()
-            .find(|a| {
-                let n = a.name.to_ascii_lowercase();
-                n.ends_with("-setup.exe") && n.contains("x64") && (n.contains("108key") == want_108)
+            .find(|a| a.name.to_ascii_lowercase().starts_with("desktoppet-setup-"))
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_ascii_lowercase();
+                    n.ends_with("-setup.exe") && n.contains("x64") && (n.contains("108key") == want_108)
+                })
             })
             .or_else(|| {
                 assets.iter().find(|a| {
@@ -144,9 +151,11 @@ fn select_asset<'a>(assets: &'a [GhAsset], install_kind: &str) -> Option<&'a GhA
             }),
         "windows-portable" => assets
             .iter()
-            .find(|a| {
-                let n = a.name.to_ascii_lowercase();
-                n.ends_with("-windows-x64.exe") && (n.contains("108key") == want_108)
+            .find(|a| a.name.to_ascii_lowercase().starts_with("desktoppet-portable-"))
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|a| a.name.to_ascii_lowercase().starts_with("desktoppet-setup-"))
             })
             .or_else(|| {
                 assets
@@ -606,13 +615,8 @@ fn fetch_json_from_url(url: &str, accept: Option<&str>, timeout_ms: i32) -> Resu
 
 #[cfg(windows)]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, Some("Accept: application/json\r\n"), 8_000) {
-        if serde_json::from_str::<GhRelease>(&text).is_ok() {
-            return Ok(text);
-        }
-    }
-    // Fallback: official GitHub Releases API
+    // Single source of truth: this project's GitHub Releases. No third-party
+    // mirror — a stale mirror is exactly what surfaced the wrong 5.1.3 version.
     fetch_json_from_url(
         REPO_API_LATEST,
         Some("Accept: application/vnd.github+json\r\n"),
@@ -663,13 +667,6 @@ fn fetch_json_from_url(url: &str, accept: &str, connect_secs: &str, max_secs: &s
 
 #[cfg(not(windows))]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, "Accept: application/json", "5", "9") {
-        if serde_json::from_str::<GhRelease>(&text).is_ok() {
-            return Ok(text);
-        }
-    }
-    // Fallback: official GitHub Releases API
     fetch_json_from_url(REPO_API_LATEST, "Accept: application/vnd.github+json", "10", "20")
 }
 
@@ -798,7 +795,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
 }
 
 /// Launches a Windows installer or newly-replaced binary detached from our kill-on-close
-/// Job Object (`CREATE_BREAKAWAY_FROM_JOB`) so it survives when the current KuroCat exits.
+/// Job Object (`CREATE_BREAKAWAY_FROM_JOB`) so it survives when the current DesktopPet exits.
 /// Falls back to a normal spawn if an outer parent Job Object forbids breakaway.
 #[cfg(windows)]
 fn spawn_detached_windows<S: AsRef<std::ffi::OsStr>>(
@@ -851,7 +848,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
     let asset_name = info
         .asset_name
         .as_deref()
-        .unwrap_or("KuroCat-update.exe");
+        .unwrap_or("DesktopPet-update.exe");
 
     emit_progress(
         app,
@@ -860,7 +857,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
         Some(info.clone()),
     );
 
-    let temp_dir = std::env::temp_dir().join("kurocat-updates");
+    let temp_dir = std::env::temp_dir().join("desktoppet-updates");
     let _ = std::fs::create_dir_all(&temp_dir);
     let safe_name = asset_name.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "_");
     let target_file = temp_dir.join(safe_name);
@@ -947,7 +944,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     let asset_name = info
         .asset_name
         .as_deref()
-        .unwrap_or("KuroCat-macos-universal.app.tar.gz");
+        .unwrap_or("DesktopPet-macos-universal.app.tar.gz");
 
     if !asset_name.to_ascii_lowercase().ends_with(".tar.gz") {
         open_url_in_browser(url);
@@ -955,7 +952,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     }
 
     let app_bundle = find_current_macos_app_bundle()
-        .unwrap_or_else(|| PathBuf::from("/Applications/KuroCat.app"));
+        .unwrap_or_else(|| PathBuf::from("/Applications/DesktopPet.app"));
 
     emit_progress(
         app,
@@ -964,10 +961,10 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
         Some(info.clone()),
     );
 
-    let temp_dir = std::env::temp_dir().join(format!("kurocat-update-{}", info.latest_version));
+    let temp_dir = std::env::temp_dir().join(format!("desktoppet-update-{}", info.latest_version));
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let archive_path = temp_dir.join("KuroCat-update.app.tar.gz");
+    let archive_path = temp_dir.join("DesktopPet-update.app.tar.gz");
 
     let dl = Command::new("/usr/bin/curl")
         .args([
@@ -979,7 +976,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
             "-H",
             &format!("User-Agent: DesktopPet/{}", CURRENT_VERSION),
             "-o",
-            archive_path.to_str().unwrap_or("/tmp/KuroCat-update.app.tar.gz"),
+            archive_path.to_str().unwrap_or("/tmp/DesktopPet-update.app.tar.gz"),
             url,
         ])
         .output()
@@ -1023,7 +1020,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
         return Err("解压更新包失败".to_string());
     }
 
-    // Find extracted .app (KuroCat.app or KuroCatPet.app)
+    // Find extracted .app (DesktopPet.app)
     let new_app = std::fs::read_dir(&extract_dir)
         .ok()
         .and_then(|mut it| {
@@ -1064,8 +1061,8 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
            /usr/bin/xattr -dr com.apple.quarantine '{dst}' 2>/dev/null || true; \
            REQ=$(/usr/bin/codesign -d -r- '{dst}' 2>&1 || true); \
            if printf '%s' \"$REQ\" | /usr/bin/grep -q 'cdhash' && ! printf '%s' \"$REQ\" | /usr/bin/grep -q 'anchor apple'; then \
-             /usr/bin/tccutil reset Accessibility com.kurocat.pet >/dev/null 2>&1 || true; \
-             /usr/bin/tccutil reset ListenEvent com.kurocat.pet >/dev/null 2>&1 || true; \
+             /usr/bin/tccutil reset Accessibility com.desktoppet.app >/dev/null 2>&1 || true; \
+             /usr/bin/tccutil reset ListenEvent com.desktoppet.app >/dev/null 2>&1 || true; \
              sleep 0.2; \
            fi; \
            /usr/bin/open -n '{dst}' --args --wait-pid {pid}; \
@@ -1179,36 +1176,37 @@ mod tests {
     }
 
     #[test]
-    fn qianyi_mirror_latest_json_parses_assets_and_digest() {
+    fn desktoppet_release_json_parses_assets_and_digest() {
         let sample = r#"{
             "tag_name": "v9.9.9",
-            "html_url": "https://qianyi.one/kurocat/",
+            "html_url": "https://github.com/daxian942-tech/DesktopPet/releases/tag/v9.9.9",
             "body": "Performance & UX update",
             "assets": [
                 {
-                    "name": "KuroCat-9.9.9-x64-setup.exe",
-                    "browser_download_url": "https://qianyi.one/kurocat/releases/v9.9.9/KuroCat-9.9.9-x64-setup.exe",
-                    "size": 2250000,
+                    "name": "DesktopPet-setup-v9.9.9.exe",
+                    "browser_download_url": "https://github.com/daxian942-tech/DesktopPet/releases/download/v9.9.9/DesktopPet-setup-v9.9.9.exe",
+                    "size": 2405483,
                     "digest": "sha256:05c1be2c444f5303770f6d59e216bc0ed7b69321fc44368e4ec231405570f950"
                 },
                 {
-                    "name": "KuroCat-9.9.9-macos-universal.app.tar.gz",
-                    "browser_download_url": "https://qianyi.one/kurocat/releases/v9.9.9/KuroCat-9.9.9-macos-universal.app.tar.gz",
-                    "size": 3100000,
+                    "name": "DesktopPet-portable-v9.9.9.exe",
+                    "browser_download_url": "https://github.com/daxian942-tech/DesktopPet/releases/download/v9.9.9/DesktopPet-portable-v9.9.9.exe",
+                    "size": 5158912,
                     "digest": "sha256:05c1be2c444f5303770f6d59e216bc0ed7b69321fc44368e4ec231405570f950"
                 }
             ]
         }"#;
-        let rel: GhRelease = serde_json::from_str(sample).expect("parse mirror json");
+        let rel: GhRelease = serde_json::from_str(sample).expect("parse release json");
         assert!(is_newer_version(&rel.tag_name, CURRENT_VERSION));
-        let win_asset = select_asset(&rel.assets, "windows-nsis").expect("select win nsis");
-        assert!(win_asset.browser_download_url.starts_with("https://qianyi.one/"));
+        let setup = select_asset(&rel.assets, "windows-nsis").expect("select win setup");
+        assert_eq!(setup.name, "DesktopPet-setup-v9.9.9.exe");
+        assert!(setup.browser_download_url.contains("daxian942-tech/DesktopPet"));
+        let portable = select_asset(&rel.assets, "windows-portable").expect("select win portable");
+        assert_eq!(portable.name, "DesktopPet-portable-v9.9.9.exe");
         assert_eq!(
-            extract_sha256(&win_asset.digest).as_deref(),
+            extract_sha256(&setup.digest).as_deref(),
             Some("05c1be2c444f5303770f6d59e216bc0ed7b69321fc44368e4ec231405570f950")
         );
-        let mac_asset = select_asset(&rel.assets, "macos-app").expect("select mac tar.gz");
-        assert!(mac_asset.name.ends_with(".app.tar.gz"));
     }
 
     #[test]
@@ -1236,11 +1234,11 @@ mod tests {
     #[test]
     fn http_url_parser_handles_github_endpoints() {
         let (https, host, port, path) =
-            parse_http_url("https://api.github.com/repos/qianyiai/KuroCat/releases/latest").unwrap();
+            parse_http_url("https://api.github.com/repos/daxian942-tech/DesktopPet/releases/latest").unwrap();
         assert!(https);
         assert_eq!(host, "api.github.com");
         assert_eq!(port, 443);
-        assert_eq!(path, "/repos/qianyiai/KuroCat/releases/latest");
+        assert_eq!(path, "/repos/daxian942-tech/DesktopPet/releases/latest");
 
         let (https2, host2, port2, path2) =
             parse_http_url("http://127.0.0.1:8080/dl?v=1").unwrap();

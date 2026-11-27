@@ -870,7 +870,11 @@ async function bootstrap(): Promise<void> {
       currentAppVersion = ver;
     }
     if (cachedUpd) {
-      cachedUpdateInfo = cachedUpd;
+      // Discard stale update cache captured from a different version line
+      // (e.g. an upstream 5.1.3 result cached before the DesktopPet rebrand).
+      if (!cachedUpd.currentVersion || cachedUpd.currentVersion === ver) {
+        cachedUpdateInfo = cachedUpd;
+      }
     }
     if (resolvedLoc) {
       resolvedBackendLocale = resolvedLoc;

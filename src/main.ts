@@ -1257,7 +1257,13 @@ function showUpdateToast(
 function handleUpdateProgressEvent(ev: UpdateProgressEvent, fromManual = false): void {
   if (ev.info) {
     latestUpdateInfo = ev.info;
-    appVersion = ev.info.currentVersion || appVersion;
+    // The footer must always show the LOCAL version from Cargo.toml. The update
+    // payload's currentVersion is that same local value; guard it so no remote
+    // string can ever overwrite the displayed version with an upstream number.
+    const localVer = ev.info.currentVersion;
+    if (localVer && /^\d+\.\d+\.\d+$/.test(localVer)) {
+      appVersion = localVer;
+    }
   }
 
   switch (ev.stage) {
