@@ -2949,8 +2949,6 @@ export class KuroCatEngine3D {
   public setCatSkin(skin: CatSkinConfig): void {
     this.currentSkin = skin;
     const isCat = resolveSpecies(skin.species) === 'cat';
-    // 语音也跟着换：非猫物种抚摸/被戳/甩尾走各自的程序化声音
-    catAudio.setSpecies(resolveSpecies(skin.species));
     this.catRoot.visible = isCat;
     this.speciesModels.setSkin(skin);
     this.applyContourGeometry(skin);

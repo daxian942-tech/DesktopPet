@@ -50,19 +50,32 @@ interface VoiceSpec {
 
 /** 每种动物的基础叫声。参数经过调音，尽量一耳朵能分辨。 */
 const VOICES: Record<AnimalSpecies, VoiceSpec> = {
-  cat: { f0: 620, f1: 460, bend: 0.45, dur: 0.42, wave: 'sine', filter: 'bandpass', cutoff: 1500, q: 1.2, gain: 0.10, attack: 0.12, vibrato: 5, vibratoDepth: 0.02, repeat: 1, gap: 0, breath: 0.10 },
-  dog: { f0: 520, f1: 170, bend: 0.30, dur: 0.20, wave: 'triangle', filter: 'bandpass', cutoff: 900, q: 1.0, gain: 0.14, attack: 0.08, vibrato: 0, vibratoDepth: 0, repeat: 2, gap: 0.16, breath: 0.28 },
-  fox: { f0: 900, f1: 1450, bend: 0.55, dur: 0.26, wave: 'sawtooth', filter: 'bandpass', cutoff: 2600, q: 2.4, gain: 0.075, attack: 0.14, vibrato: 12, vibratoDepth: 0.04, repeat: 1, gap: 0, breath: 0.16 },
-  panda: { f0: 250, f1: 175, bend: 0.60, dur: 0.55, wave: 'triangle', filter: 'lowpass', cutoff: 700, q: 0.8, gain: 0.12, attack: 0.18, vibrato: 4, vibratoDepth: 0.03, repeat: 1, gap: 0, breath: 0.30 },
-  bunny: { f0: 1150, f1: 1500, bend: 0.40, dur: 0.13, wave: 'sine', filter: 'bandpass', cutoff: 3200, q: 3.0, gain: 0.065, attack: 0.20, vibrato: 0, vibratoDepth: 0, repeat: 2, gap: 0.10, breath: 0.08 },
-  penguin: { f0: 340, f1: 280, bend: 0.50, dur: 0.15, wave: 'square', filter: 'bandpass', cutoff: 1100, q: 1.8, gain: 0.085, attack: 0.10, vibrato: 0, vibratoDepth: 0, repeat: 3, gap: 0.13, breath: 0.14 },
-  frog: { f0: 190, f1: 150, bend: 0.35, dur: 0.30, wave: 'sawtooth', filter: 'lowpass', cutoff: 620, q: 2.2, gain: 0.13, attack: 0.10, vibrato: 26, vibratoDepth: 0.10, repeat: 2, gap: 0.18, breath: 0.20 },
-  chiikawa: { f0: 1400, f1: 1900, bend: 0.55, dur: 0.11, wave: 'sine', filter: 'bandpass', cutoff: 3800, q: 3.5, gain: 0.055, attack: 0.18, vibrato: 18, vibratoDepth: 0.05, repeat: 2, gap: 0.09, breath: 0.06 },
-  grasscow: { f0: 155, f1: 92, bend: 0.62, dur: 0.95, wave: 'sawtooth', filter: 'bandpass', cutoff: 480, q: 2.6, gain: 0.16, attack: 0.22, vibrato: 6, vibratoDepth: 0.06, repeat: 1, gap: 0, breath: 0.34 },
-  milkdragon: { f0: 430, f1: 640, bend: 0.50, dur: 0.58, wave: 'sine', filter: 'lowpass', cutoff: 1800, q: 0.9, gain: 0.12, attack: 0.20, vibrato: 7, vibratoDepth: 0.05, repeat: 1, gap: 0, breath: 0.12 },
-  capybara: { f0: 210, f1: 165, bend: 0.55, dur: 0.40, wave: 'triangle', filter: 'lowpass', cutoff: 560, q: 1.1, gain: 0.11, attack: 0.16, vibrato: 5, vibratoDepth: 0.03, repeat: 1, gap: 0, breath: 0.22 },
-  loopy: { f0: 780, f1: 1050, bend: 0.45, dur: 0.30, wave: 'sine', filter: 'bandpass', cutoff: 2200, q: 2.0, gain: 0.085, attack: 0.18, vibrato: 9, vibratoDepth: 0.04, repeat: 1, gap: 0, breath: 0.10 },
-  bubu: { f0: 330, f1: 240, bend: 0.50, dur: 0.38, wave: 'triangle', filter: 'bandpass', cutoff: 780, q: 1.6, gain: 0.10, attack: 0.20, vibrato: 11, vibratoDepth: 0.07, repeat: 1, gap: 0, breath: 0.42 },
+  // 猫保留原样（猫有自己的真实呼噜体系，这里只作兜底）
+  cat: { f0: 620, f1: 460, bend: 0.45, dur: 0.42, wave: 'sine', filter: 'lowpass', cutoff: 1600, q: 0.8, gain: 0.10, attack: 0.14, vibrato: 5, vibratoDepth: 0.015, repeat: 1, gap: 0, breath: 0.08 },
+  // 犬科：中低音、软三角波，短促「嗷」
+  dog: { f0: 430, f1: 210, bend: 0.35, dur: 0.22, wave: 'triangle', filter: 'lowpass', cutoff: 900, q: 0.7, gain: 0.11, attack: 0.10, vibrato: 0, vibratoDepth: 0, repeat: 2, gap: 0.15, breath: 0.16 },
+  // 狐狸：降基频到 620，正弦，避免原来 900-1450 锯齿的哨音
+  fox: { f0: 620, f1: 880, bend: 0.50, dur: 0.28, wave: 'sine', filter: 'lowpass', cutoff: 1700, q: 0.9, gain: 0.085, attack: 0.16, vibrato: 7, vibratoDepth: 0.02, repeat: 1, gap: 0, breath: 0.10 },
+  // 熊猫：温柔低频哼
+  panda: { f0: 245, f1: 190, bend: 0.58, dur: 0.55, wave: 'sine', filter: 'lowpass', cutoff: 620, q: 0.7, gain: 0.11, attack: 0.22, vibrato: 4, vibratoDepth: 0.02, repeat: 1, gap: 0, breath: 0.14 },
+  // 兔子：降基频到 820，短促「啾」，可爱但不高尖
+  bunny: { f0: 820, f1: 1050, bend: 0.42, dur: 0.14, wave: 'sine', filter: 'lowpass', cutoff: 2000, q: 0.9, gain: 0.075, attack: 0.22, vibrato: 0, vibratoDepth: 0, repeat: 2, gap: 0.11, breath: 0.05 },
+  // 企鹅：三角波替代方波，中低频「嘎」
+  penguin: { f0: 330, f1: 265, bend: 0.50, dur: 0.16, wave: 'triangle', filter: 'lowpass', cutoff: 850, q: 0.8, gain: 0.095, attack: 0.12, vibrato: 0, vibratoDepth: 0, repeat: 3, gap: 0.14, breath: 0.12 },
+  // 青蛙：正弦替代锯齿，颤音深度从 0.10 降到 0.03
+  frog: { f0: 185, f1: 150, bend: 0.38, dur: 0.32, wave: 'sine', filter: 'lowpass', cutoff: 520, q: 0.9, gain: 0.115, attack: 0.14, vibrato: 14, vibratoDepth: 0.03, repeat: 2, gap: 0.19, breath: 0.14 },
+  // 吉伊：基频从 1400 降到 880，柔和小「吱」，奶气但不刺
+  chiikawa: { f0: 880, f1: 1150, bend: 0.52, dur: 0.13, wave: 'sine', filter: 'lowpass', cutoff: 2100, q: 0.9, gain: 0.07, attack: 0.24, vibrato: 10, vibratoDepth: 0.02, repeat: 2, gap: 0.10, breath: 0.04 },
+  // 牛：正弦替代锯齿，低频稳定「哞」
+  grasscow: { f0: 150, f1: 100, bend: 0.60, dur: 0.92, wave: 'sine', filter: 'lowpass', cutoff: 460, q: 0.7, gain: 0.13, attack: 0.26, vibrato: 5, vibratoDepth: 0.03, repeat: 1, gap: 0, breath: 0.18 },
+  // 奶龙：奶萌「嗷呜」，正弦上行
+  milkdragon: { f0: 400, f1: 580, bend: 0.50, dur: 0.56, wave: 'sine', filter: 'lowpass', cutoff: 1300, q: 0.8, gain: 0.11, attack: 0.24, vibrato: 6, vibratoDepth: 0.025, repeat: 1, gap: 0, breath: 0.08 },
+  // 水豚：低沉慢哼
+  capybara: { f0: 200, f1: 168, bend: 0.55, dur: 0.42, wave: 'sine', filter: 'lowpass', cutoff: 500, q: 0.7, gain: 0.10, attack: 0.22, vibrato: 4, vibratoDepth: 0.02, repeat: 1, gap: 0, breath: 0.12 },
+  // 露比：软萌「呜」，正弦
+  loopy: { f0: 640, f1: 850, bend: 0.46, dur: 0.32, wave: 'sine', filter: 'lowpass', cutoff: 1600, q: 0.9, gain: 0.085, attack: 0.20, vibrato: 7, vibratoDepth: 0.02, repeat: 1, gap: 0, breath: 0.08 },
+  // 布布：布偶感的软三角低频，颤音收敛
+  bubu: { f0: 300, f1: 235, bend: 0.50, dur: 0.40, wave: 'triangle', filter: 'lowpass', cutoff: 700, q: 0.7, gain: 0.095, attack: 0.24, vibrato: 8, vibratoDepth: 0.03, repeat: 1, gap: 0, breath: 0.22 },
 };
 
 /** 情境变体：对基础参数做微调。 */
@@ -83,18 +96,74 @@ function variant(base: VoiceSpec, action: CareVoiceAction): VoiceSpec {
   }
 }
 
+/**
+ * 正在播放的合成音源注册表（按 AudioContext 隔离）。
+ * 切物种时调 stopAllCreatureVoices 一次性停掉，避免上一只动物的叫声拖在新动物身上。
+ */
+type Stoppable = { stop: () => void };
+const activeByCtx = new WeakMap<AudioContext, Set<Stoppable>>();
+
+function track(ctx: AudioContext, node: Stoppable): void {
+  let set = activeByCtx.get(ctx);
+  if (!set) {
+    set = new Set();
+    activeByCtx.set(ctx, set);
+  }
+  set.add(node);
+}
+
+function untrack(ctx: AudioContext, node: Stoppable): void {
+  activeByCtx.get(ctx)?.delete(node);
+}
+
+/** 立刻停掉这个上下文里所有正在响的动物声音（切物种 / 静音时调用）。 */
+export function stopAllCreatureVoices(ctx: AudioContext | null): void {
+  if (!ctx) return;
+  const set = activeByCtx.get(ctx);
+  if (!set) return;
+  for (const node of [...set]) {
+    try {
+      node.stop();
+    } catch {
+      // 已经停过
+    }
+  }
+  set.clear();
+}
+
+/**
+ * 柔化总线：所有合成叫声都先经过这个低通滤波，
+ * 把 4kHz 以上的毛刺削掉——这是"刺耳"的主要来源（锯齿/方波的谐波）。
+ */
+function softBus(ctx: AudioContext, out: AudioNode): BiquadFilterNode {
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4200;
+  lp.Q.value = 0.5;
+  // 再叠一个高架削一点齿音
+  const shelf = ctx.createBiquadFilter();
+  shelf.type = 'highshelf';
+  shelf.frequency.value = 6000;
+  shelf.gain.value = -9;
+  lp.connect(shelf);
+  shelf.connect(out);
+  return lp;
+}
+
 function env(ctx: AudioContext, node: AudioNode, spec: VoiceSpec, t0: number, out: AudioNode): void {
   const g = ctx.createGain();
-  const a = Math.max(0.008, spec.dur * spec.attack);
+  const a = Math.max(0.012, spec.dur * spec.attack);
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(spec.gain, t0 + a);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + spec.dur);
+  // 用 setTargetAtTime 做平滑起音，避免 linearRamp 的硬拐点产生"咔"声
+  g.gain.setTargetAtTime(spec.gain, t0 + a * 0.35, Math.max(0.006, a * 0.32));
+  g.gain.setTargetAtTime(0.0001, t0 + spec.dur * 0.72, Math.max(0.02, spec.dur * 0.18));
   node.connect(g);
   g.connect(out);
 }
 
-/** 合成单声"叫"。 */
-function chirp(ctx: AudioContext, spec: VoiceSpec, t0: number, out: AudioNode): void {
+/** 合成单声"叫"。所有输出都先过柔化总线，避免锯齿谐波扎耳朵。 */
+function chirp(ctx: AudioContext, spec: VoiceSpec, t0: number, tap: AudioNode): void {
+  const out = softBus(ctx, tap);
   const osc = ctx.createOscillator();
   osc.type = spec.wave;
   osc.frequency.setValueAtTime(spec.f0, t0);
@@ -102,31 +171,46 @@ function chirp(ctx: AudioContext, spec: VoiceSpec, t0: number, out: AudioNode): 
   osc.frequency.exponentialRampToValueAtTime(Math.max(30, spec.f1), mid);
   osc.frequency.exponentialRampToValueAtTime(Math.max(30, spec.f0 * 0.82), t0 + spec.dur);
 
-  if (spec.vibrato > 0) {
-    const lfo = ctx.createOscillator();
-    const lg = ctx.createGain();
+  // 颤音保持很浅（≤3%），深颤音是"哇哇"怪声的来源
+  let lfo: OscillatorNode | null = null;
+  let lg: GainNode | null = null;
+  if (spec.vibrato > 0 && spec.vibratoDepth > 0.001) {
+    lfo = ctx.createOscillator();
+    lg = ctx.createGain();
     lfo.frequency.value = spec.vibrato;
     lg.gain.value = spec.f0 * spec.vibratoDepth;
     lfo.connect(lg);
     lg.connect(osc.frequency);
     lfo.start(t0);
     lfo.stop(t0 + spec.dur + 0.02);
-    lfo.onended = () => { try { lfo.disconnect(); lg.disconnect(); } catch { /* ignore */ } };
+    lfo.onended = () => { try { lfo!.disconnect(); lg!.disconnect(); } catch { /* ignore */ } };
   }
 
   const filter = ctx.createBiquadFilter();
   filter.type = spec.filter;
   filter.frequency.setValueAtTime(spec.cutoff, t0);
-  filter.frequency.exponentialRampToValueAtTime(Math.max(120, spec.cutoff * 0.7), t0 + spec.dur);
-  filter.Q.value = spec.q;
+  filter.frequency.linearRampToValueAtTime(Math.max(160, spec.cutoff * 0.82), t0 + spec.dur);
+  filter.Q.value = Math.max(0.5, Math.min(1.1, spec.q));
 
   osc.connect(filter);
   env(ctx, filter, spec, t0, out);
+
+  // 只注册主振荡器：stop 它会连带静音（filter/gain 没声源就不响）
+  const stopper: Stoppable = {
+    stop: () => {
+      try { osc.stop(); } catch { /* ignore */ }
+      try { osc.disconnect(); } catch { /* ignore */ }
+    },
+  };
+  track(ctx, stopper);
+  osc.onended = () => {
+    untrack(ctx, stopper);
+    try { osc.disconnect(); filter.disconnect(); } catch { /* ignore */ }
+  };
   osc.start(t0);
   osc.stop(t0 + spec.dur + 0.02);
-  osc.onended = () => { try { osc.disconnect(); filter.disconnect(); } catch { /* ignore */ } };
 
-  // 气声层（鼻息 / 咀嚼 / 布偶沙哑感）
+  // 气声层（鼻息 / 咀嚼 / 布偶沙哑感）——也走柔化总线，音量再压一点
   if (spec.breath > 0.04) {
     const len = Math.max(1, Math.floor(ctx.sampleRate * spec.dur));
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -136,18 +220,34 @@ function chirp(ctx: AudioContext, spec: VoiceSpec, t0: number, out: AudioNode): 
     src.buffer = buf;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = Math.max(300, spec.cutoff * 1.4);
-    bp.Q.value = 1.1;
+    // 气声中心频率压到 1.2kHz 以下，避免"嘶"的高频噪音
+    bp.frequency.value = Math.min(1200, Math.max(260, spec.cutoff * 0.9));
+    bp.Q.value = 0.8;
     const bg = ctx.createGain();
     bg.gain.setValueAtTime(0.0001, t0);
-    bg.gain.linearRampToValueAtTime(spec.gain * spec.breath, t0 + Math.min(0.05, spec.dur * 0.25));
-    bg.gain.exponentialRampToValueAtTime(0.0001, t0 + spec.dur);
+    bg.gain.setTargetAtTime(
+      spec.gain * spec.breath * 0.55,
+      t0 + Math.min(0.05, spec.dur * 0.25),
+      Math.max(0.01, spec.dur * 0.2),
+    );
+    bg.gain.setTargetAtTime(0.0001, t0 + spec.dur * 0.7, Math.max(0.02, spec.dur * 0.2));
     src.connect(bp);
     bp.connect(bg);
     bg.connect(out);
+
+    const breathStopper: Stoppable = {
+      stop: () => {
+        try { src.stop(); } catch { /* ignore */ }
+        try { src.disconnect(); } catch { /* ignore */ }
+      },
+    };
+    track(ctx, breathStopper);
+    src.onended = () => {
+      untrack(ctx, breathStopper);
+      try { src.disconnect(); bp.disconnect(); bg.disconnect(); } catch { /* ignore */ }
+    };
     src.start(t0);
     src.stop(t0 + spec.dur);
-    src.onended = () => { try { src.disconnect(); bp.disconnect(); bg.disconnect(); } catch { /* ignore */ } };
   }
 }
 
@@ -189,10 +289,12 @@ export function playCreatureVoice(
     const base = VOICES[species] ?? VOICES.cat;
     const spec = variant(base, action);
     const t0 = ctx.currentTime + 0.01;
+    // 一次叫声共用一个柔化总线，避免每个 chirp 都新建滤波链
+    const bus = softBus(ctx, ctx.destination);
     for (let i = 0; i < spec.repeat; i++) {
-      chirp(ctx, spec, t0 + i * (spec.dur + spec.gap), ctx.destination);
+      chirp(ctx, spec, t0 + i * (spec.dur + spec.gap), bus);
     }
-    chewOrGulp(ctx, action, t0, ctx.destination, species);
+    chewOrGulp(ctx, action, t0, bus, species);
   } catch {
     // 静默降级：缺音频硬件 / 自动播放被拦截时不影响桌宠
   }
@@ -238,23 +340,33 @@ export function playCreaturePurr(
     lp.Q.value = 0.8;
 
     const g = ctx.createGain();
-    const peak = 0.075 * Math.max(0.2, Math.min(1, intensity));
+    const peak = 0.062 * Math.max(0.2, Math.min(1, intensity));
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(peak, t0 + 0.14);
-    g.gain.setValueAtTime(peak, t0 + dur - 0.18);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.gain.setTargetAtTime(peak, t0 + 0.06, 0.05);
+    g.gain.setTargetAtTime(0.0001, t0 + dur * 0.82, 0.06);
     // LFO 接到主增益上做振幅颤动
     tremGain.connect(g.gain);
 
+    const bus = softBus(ctx, ctx.destination);
     osc.connect(lp);
     lp.connect(g);
-    g.connect(ctx.destination);
+    g.connect(bus);
 
     osc.start(t0);
     tremolo.start(t0);
     osc.stop(t0 + dur + 0.02);
     tremolo.stop(t0 + dur + 0.02);
+
+    const stopper: Stoppable = {
+      stop: () => {
+        try { osc.stop(); } catch { /* ignore */ }
+        try { tremolo.stop(); } catch { /* ignore */ }
+        try { osc.disconnect(); } catch { /* ignore */ }
+      },
+    };
+    track(ctx, stopper);
     const cleanup = () => {
+      untrack(ctx, stopper);
       try {
         osc.disconnect(); lp.disconnect(); g.disconnect();
         tremolo.disconnect(); tremGain.disconnect();
@@ -295,18 +407,28 @@ export function playCreatureTouch(
     lp.Q.value = 1.0;
 
     const g = ctx.createGain();
-    const peak = base.gain * (kind === 'boop' ? 0.85 : 0.6);
-    const dur = kind === 'boop' ? 0.12 : 0.10;
+    const peak = base.gain * (kind === 'boop' ? 0.75 : 0.55);
+    const dur = kind === 'boop' ? 0.13 : 0.11;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(peak, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.gain.setTargetAtTime(peak, t0 + 0.02, 0.012);
+    g.gain.setTargetAtTime(0.0001, t0 + dur * 0.6, 0.03);
 
+    const bus = softBus(ctx, ctx.destination);
     osc.connect(lp);
     lp.connect(g);
-    g.connect(ctx.destination);
+    g.connect(bus);
     osc.start(t0);
     osc.stop(t0 + dur + 0.02);
+
+    const stopper: Stoppable = {
+      stop: () => {
+        try { osc.stop(); } catch { /* ignore */ }
+        try { osc.disconnect(); } catch { /* ignore */ }
+      },
+    };
+    track(ctx, stopper);
     osc.onended = () => {
+      untrack(ctx, stopper);
       try { osc.disconnect(); lp.disconnect(); g.disconnect(); } catch { /* ignore */ }
     };
   } catch {

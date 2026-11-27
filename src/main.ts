@@ -22,7 +22,7 @@ import {
   type PetCareState,
 } from './petCare';
 import { isIndependentSpecies, type PetMood } from './speciesRenderer2d';
-import { DEFAULT_BUILTIN_CATS, type CatSkinConfig } from './catSkins';
+import { DEFAULT_BUILTIN_CATS, resolveSpecies, type CatSkinConfig } from './catSkins';
 import {
   getKeyboardLayout,
   normalizeKeyboardTheme,
@@ -881,6 +881,13 @@ function syncMenuUI(): void {
   }
   const activeCat = catList.find((c) => c.id === settings.catBreed) ?? catList[0];
   renderBreedPills();
+
+  // 语音物种在这里统一设置一次：两个渲染引擎都会调各自的皮肤方法，
+  // 若让它们各自 setSpecies，某一方拿到空皮肤时会把物种误重置成 cat，
+  // 造成"切到牛了却还在响猫声"。这里用同源的 activeCat 判定，唯一真相。
+  if (activeCat) {
+    catAudio.setSpecies(resolveSpecies(activeCat.species));
+  }
 
   const renderMode: DesktopRenderMode = settings.renderMode === '2d' ? '2d' : '3d';
   const collarColor: CollarColorId =

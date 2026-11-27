@@ -4,6 +4,7 @@ import {
   playCreatureVoice,
   playCreaturePurr,
   playCreatureTouch,
+  stopAllCreatureVoices,
   type CareVoiceAction,
 } from './creatureVoice';
 import { ANIMAL_VOICE_MP3_B64 } from './animalVoiceData';
@@ -44,6 +45,10 @@ class CatAudio {
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) {
+      // 关音效时把所有动物声音立刻掐断，而不是等它们自然放完
+      this.stopCreaturePurr();
+      this.stopAnimalSamples();
+      if (this.ctx) stopAllCreatureVoices(this.ctx);
       this.setPurrIntensity(0);
     }
   }
@@ -923,6 +928,8 @@ class CatAudio {
   private animalBuffers = new Map<AnimalSpecies, AudioBuffer>();
   private animalDecodePromise: Promise<void> | null = null;
   private animalDecodeFailedCtx: AudioContext | null = null;
+  /** 正在播放的真实录音源，切物种时全部停掉。 */
+  private animalSources = new Set<AudioBufferSourceNode>();
 
   /** 把内嵌的真实动物录音解码进缓存（每物种一次）。 */
   private prewarmAnimalVoices(ctx: AudioContext): void {
@@ -974,7 +981,9 @@ class CatAudio {
       g.gain.value = Math.max(0, Math.min(1, gain)) * 0.9;
       src.connect(g);
       g.connect(ctx.destination);
+      this.animalSources.add(src);
       src.onended = () => {
+        this.animalSources.delete(src);
         try { src.disconnect(); g.disconnect(); } catch { /* ignore */ }
       };
       src.start();
@@ -984,6 +993,23 @@ class CatAudio {
     }
   }
 
+  /** 停掉所有正在播的真实动物录音（切物种 / 静音时用）。 */
+  private stopAnimalSamples(): void {
+    for (const src of [...this.animalSources]) {
+      try {
+        src.stop();
+      } catch {
+        // 已结束
+      }
+      try {
+        src.disconnect();
+      } catch {
+        // ignore
+      }
+    }
+    this.animalSources.clear();
+  }
+
   /**
    * 切换当前物种。引擎换皮肤时调用。
    * 非猫物种之后会走各自的抚摸声 / 被戳声 / 甩尾声，而不是猫呼噜和猫的 boop。
@@ -991,14 +1017,18 @@ class CatAudio {
   public setSpecies(species: AnimalSpecies): void {
     if (this.species === species) return;
 
-    // 关键：必须在改 species 之前按「旧物种」的身份把持续性声音停掉。
-    // 否则改成非猫后再调 setPurrIntensity(0) 会走非猫分支，
-    // 猫的真实呼噜 MP3 循环（purrSource）就永远停不掉，会一直响。
+    // 切换物种时，先把上一种动物的所有声音立刻掐断：
+    // 1) 猫的真实呼噜循环（purrSource）
+    // 2) 真实录音 BufferSource（animalSources）
+    // 3) 合成叫声的振荡器/气声（creatureVoice 的注册表）
+    // 4) 咕噜定时器
+    // 顺序很重要：必须在改 this.species 之前做，否则 setPurrIntensity(0)
+    // 会走非猫分支，猫呼噜永远停不掉。
     if (this.species === 'cat') {
-      // 走猫分支的静音路径：把 masterGain 拉到 0 并真正 stop 掉 purrSource
       if (this.ctx && this.masterGain) {
         try {
-          this.masterGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.05);
+          this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
+          this.masterGain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
         } catch {
           // 上下文已关闭时忽略
         }
@@ -1006,6 +1036,9 @@ class CatAudio {
       this.stopPurrSource();
     }
     this.stopCreaturePurr();
+    this.stopAnimalSamples();
+    if (this.ctx) stopAllCreatureVoices(this.ctx);
+
     this.species = species;
     this.currentIntensity = 0;
   }

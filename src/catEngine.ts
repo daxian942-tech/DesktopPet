@@ -983,8 +983,6 @@ export class KuroCatEngine {
       this.catBreed = 'black';
       this.customSkin = null;
     }
-    // 语音跟着物种走：非猫物种的抚摸/被戳/甩尾用各自的程序化声音
-    catAudio.setSpecies(resolveSpecies(this.customSkin?.species));
     this.syncLayoutPositions();
     this.wakeAction();
   }
