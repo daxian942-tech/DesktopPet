@@ -15,6 +15,9 @@ import type { AnimalSpecies } from './catSkins';
 
 export type CareVoiceAction = 'feed' | 'drink' | 'play' | 'bath';
 
+/** 交互音效：抚摸满足声 / 被戳一下 / 甩尾巴。 */
+export type TouchVoiceKind = 'purr' | 'boop' | 'flick';
+
 /** 一次叫声的声学参数。 */
 interface VoiceSpec {
   /** 基础音高（Hz） */
@@ -192,5 +195,121 @@ export function playCreatureVoice(
     chewOrGulp(ctx, action, t0, ctx.destination, species);
   } catch {
     // 静默降级：缺音频硬件 / 自动播放被拦截时不影响桌宠
+  }
+}
+
+/**
+ * 非猫物种的「抚摸满足声」：一段低频颤动的咕噜。
+ *
+ * 猫的呼噜是真实录音循环；其余动物没有可循环的素材，这里用低频三角波
+ * 加 28Hz 的振幅颤动合成一个柔软的喉音，音高按物种基频缩放，
+ * 所以牛是低沉的、吉伊是细高的。返回建议的重复间隔（秒），
+ * 由调用方在抚摸持续期间定时重触发。
+ */
+export function playCreaturePurr(
+  ctx: AudioContext,
+  species: AnimalSpecies,
+  intensity = 0.8,
+): number {
+  try {
+    if (!Number.isFinite(ctx.currentTime)) return 0.9;
+    const base = VOICES[species] ?? VOICES.cat;
+    // 喉音基频：取物种基频的 35%~45%，大型动物更低
+    const big = species === 'grasscow' || species === 'capybara' || species === 'panda';
+    const f = Math.max(42, base.f0 * (big ? 0.30 : 0.42));
+    const dur = 0.85;
+    const t0 = ctx.currentTime + 0.01;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t0);
+    osc.frequency.linearRampToValueAtTime(f * 1.03, t0 + dur);
+
+    // 呼噜的颤动：用一个低频 LFO 直接调制音量
+    const tremolo = ctx.createOscillator();
+    const tremGain = ctx.createGain();
+    tremolo.frequency.value = big ? 22 : 28;
+    tremGain.gain.value = 0.45;
+    tremolo.connect(tremGain);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.max(320, base.cutoff * 0.55);
+    lp.Q.value = 0.8;
+
+    const g = ctx.createGain();
+    const peak = 0.075 * Math.max(0.2, Math.min(1, intensity));
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.14);
+    g.gain.setValueAtTime(peak, t0 + dur - 0.18);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    // LFO 接到主增益上做振幅颤动
+    tremGain.connect(g.gain);
+
+    osc.connect(lp);
+    lp.connect(g);
+    g.connect(ctx.destination);
+
+    osc.start(t0);
+    tremolo.start(t0);
+    osc.stop(t0 + dur + 0.02);
+    tremolo.stop(t0 + dur + 0.02);
+    const cleanup = () => {
+      try {
+        osc.disconnect(); lp.disconnect(); g.disconnect();
+        tremolo.disconnect(); tremGain.disconnect();
+      } catch { /* ignore */ }
+    };
+    osc.onended = cleanup;
+
+    return dur;
+  } catch {
+    return 0.9;
+  }
+}
+
+/**
+ * 非猫物种的「被戳 / 甩尾」短音。
+ * boop：短促上扬的「嗯？」；flick：快速下滑的「唰」。
+ */
+export function playCreatureTouch(
+  ctx: AudioContext,
+  species: AnimalSpecies,
+  kind: TouchVoiceKind,
+): void {
+  try {
+    if (!Number.isFinite(ctx.currentTime)) return;
+    const base = VOICES[species] ?? VOICES.cat;
+    const t0 = ctx.currentTime + 0.008;
+
+    const osc = ctx.createOscillator();
+    osc.type = kind === 'boop' ? 'sine' : 'triangle';
+    const f0 = base.f0 * (kind === 'boop' ? 1.0 : 1.25);
+    const f1 = kind === 'boop' ? f0 * 1.55 : f0 * 0.55;
+    osc.frequency.setValueAtTime(f0, t0);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t0 + (kind === 'boop' ? 0.10 : 0.085));
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.max(500, base.cutoff);
+    lp.Q.value = 1.0;
+
+    const g = ctx.createGain();
+    const peak = base.gain * (kind === 'boop' ? 0.85 : 0.6);
+    const dur = kind === 'boop' ? 0.12 : 0.10;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    osc.connect(lp);
+    lp.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+    osc.onended = () => {
+      try { osc.disconnect(); lp.disconnect(); g.disconnect(); } catch { /* ignore */ }
+    };
+  } catch {
+    // 静默降级
   }
 }

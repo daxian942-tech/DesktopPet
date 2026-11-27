@@ -1,6 +1,11 @@
 import { TYPING_SOUND_WAV_B64, type TypingSoundSlot } from './typingSoundData';
 import { PURR_SOUND_MP3_B64 } from './purrSoundData';
-import { playCreatureVoice, type CareVoiceAction } from './creatureVoice';
+import {
+  playCreatureVoice,
+  playCreaturePurr,
+  playCreatureTouch,
+  type CareVoiceAction,
+} from './creatureVoice';
 import type { AnimalSpecies } from './catSkins';
 
 const KEY_DOWN_SLOTS: readonly TypingSoundSlot[] = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];
@@ -21,6 +26,10 @@ class CatAudio {
   private purrDecodeFailedCtx: AudioContext | null = null;
   private purrStopTimer: number | null = null;
   private currentIntensity = 0;
+  /** 当前物种。非猫物种不走猫呼噜/猫音效，改用各自的程序化声音。 */
+  private species: AnimalSpecies = 'cat';
+  /** 非猫抚摸满足声的定时器（轻轻重复的咕噜）。 */
+  private creaturePurrTimer: number | null = null;
   private currentPurrTone: 'normal' | 'chin' | 'knead' = 'normal';
   private deviceWatcherAttached = false;
   private rebuildTimer: number | null = null;
@@ -635,6 +644,20 @@ class CatAudio {
    */
   public setPurrIntensity(intensity: number, tone: 'normal' | 'chin' | 'knead' = 'normal'): void {
     const target = this.enabled ? Math.max(0, Math.min(1, intensity)) : 0;
+
+    // 非猫物种：不播猫呼噜，改走各自的持续咕噜声
+    if (this.species !== 'cat') {
+      const changed = Math.abs(target - this.currentIntensity) >= 0.005;
+      this.currentIntensity = target;
+      this.currentPurrTone = tone;
+      if (target <= 0.01) {
+        this.stopCreaturePurr();
+      } else if (changed || this.creaturePurrTimer === null) {
+        this.driveCreaturePurr(target);
+      }
+      return;
+    }
+
     if (target <= 0.01 && !this.graphReady) return;
     if (Math.abs(target - this.currentIntensity) < 0.005 && tone === this.currentPurrTone) return;
     const wasSilent = this.currentIntensity <= 0.01;
@@ -674,6 +697,14 @@ class CatAudio {
    * Cute soft nose-boop squeak + tiny kitten sneeze puff!
    */
   public playBoopSneeze(): void {
+    // 非猫物种：用各自音高的「被戳一下」短音，而不是猫的鼻音 boop
+    if (this.species !== 'cat') {
+      if (!this.enabled) return;
+      const c = this.ensureAudioContext();
+      if (!c) return;
+      playCreatureTouch(c, this.species, 'boop');
+      return;
+    }
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
@@ -745,6 +776,14 @@ class CatAudio {
    * Quick playful "bzzp / flick" chirp when tail is poked!
    */
   public playTailFlick(escalated = false): void {
+    // 非猫物种：用各自音高的「甩尾」下滑音
+    if (this.species !== 'cat') {
+      if (!this.enabled) return;
+      const c = this.ensureAudioContext();
+      if (!c) return;
+      playCreatureTouch(c, this.species, 'flick');
+      return;
+    }
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
@@ -872,6 +911,57 @@ class CatAudio {
     } catch {
       // 静默降级
     }
+  }
+
+  /**
+   * 切换当前物种。引擎换皮肤时调用。
+   * 非猫物种之后会走各自的抚摸声 / 被戳声 / 甩尾声，而不是猫呼噜和猫的 boop。
+   */
+  public setSpecies(species: AnimalSpecies): void {
+    if (this.species === species) return;
+    this.species = species;
+    // 切走时立刻停掉旧物种的持续性声音，避免猫呼噜残留在新动物身上
+    this.stopCreaturePurr();
+    this.setPurrIntensity(0);
+  }
+
+  public getSpecies(): AnimalSpecies {
+    return this.species;
+  }
+
+  private stopCreaturePurr(): void {
+    if (this.creaturePurrTimer === null) return;
+    if (typeof window !== 'undefined') window.clearTimeout(this.creaturePurrTimer);
+    this.creaturePurrTimer = null;
+  }
+
+  /**
+   * 非猫物种的抚摸满足声：不循环猫呼噜，而是按物种的咕噜定时重触发。
+   * intensity 沿用调用方传的抚摸强度（0..1）。
+   */
+  private driveCreaturePurr(intensity: number): void {
+    if (!this.enabled || intensity <= 0.01) {
+      this.stopCreaturePurr();
+      return;
+    }
+    // 已经有咕噜在放，强度变化交给下一次定时触发处理即可
+    if (this.creaturePurrTimer !== null) return;
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return;
+
+    const tick = () => {
+      this.creaturePurrTimer = null;
+      if (!this.enabled || this.species === 'cat') return;
+      if (this.currentIntensity <= 0.01) return;
+      const c = this.ensureAudioContext();
+      if (!c) return;
+      const dur = playCreaturePurr(c, this.species, this.currentIntensity);
+      if (typeof window !== 'undefined') {
+        // 略短于音频长度就接上下一次，形成连续的咕噜
+        this.creaturePurrTimer = window.setTimeout(tick, Math.max(320, dur * 900));
+      }
+    };
+    tick();
   }
 }
 

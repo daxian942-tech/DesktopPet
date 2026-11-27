@@ -67,8 +67,39 @@ def synth(f0, f1, dur, wave, cutoff, gain, vib, vibd, breath):
     return (s * env * gain).astype(np.float32)
 
 
+def synth_purr(f0, cutoff, big):
+    """抚摸满足声：低频三角波 + 22/28Hz 振幅颤动，模拟喉音咕噜。"""
+    dur = 0.85
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    f = max(42, f0 * (0.30 if big else 0.42))
+    ph = 2 * np.pi * np.cumsum(np.full(n, f)) / SR
+    s = 2 / np.pi * np.arcsin(np.sin(ph))
+    a = math.exp(-2 * math.pi * max(320, cutoff * 0.55) / SR)
+    lp = np.zeros(n)
+    for i in range(1, n):
+        lp[i] = a * lp[i - 1] + (1 - a) * s[i]
+    trem = 0.55 + 0.45 * np.sin(2 * np.pi * (22 if big else 28) * t)
+    env = np.minimum(1, t / 0.14) * np.exp(-np.maximum(0, t - (dur - 0.18)) / 0.12)
+    return (lp * trem * env * 0.075).astype(np.float32)
+
+
+def synth_touch(f0, cutoff, gain, kind):
+    """被戳（boop，上扬）/ 甩尾（flick，下滑）。"""
+    dur = 0.12 if kind == 'boop' else 0.10
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    base = f0 * (1.0 if kind == 'boop' else 1.25)
+    end = base * (1.55 if kind == 'boop' else 0.55)
+    f = base + (end - base) * (t / dur)
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    s = np.sin(ph) if kind == 'boop' else 2 / np.pi * np.arcsin(np.sin(ph))
+    env = np.minimum(1, t / 0.012) * np.exp(-t / (dur * 0.35))
+    return (s * env * gain * (0.85 if kind == 'boop' else 0.6)).astype(np.float32)
+
+
 def main():
-    out = Path(__file__).resolve().parent.parent / '交付产物' / '动物叫声试听集.wav'
+    root = Path(__file__).resolve().parent.parent / '交付产物'
     gap = np.zeros(int(SR * .45), dtype=np.float32)
     chunks = []
     for name, p in V.items():
@@ -82,10 +113,31 @@ def main():
     audio = np.concatenate(chunks)
     audio = np.clip(audio, -.95, .95)
     pcm = b''.join(struct.pack('<h', int(x * 32767)) for x in audio)
+    out = root / '动物叫声试听集.wav'
     with wave.open(str(out), 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
         w.writeframes(pcm)
     print(f'生成 {out}  {len(audio)/SR:.1f}s')
+
+    # 交互音试听：每种动物「抚摸 → 被戳 → 甩尾」三连
+    bigs = {'草地牛', '水豚噜噜', '熊猫'}
+    big_gap = np.zeros(int(SR * .28), dtype=np.float32)
+    touch_chunks = []
+    for name, p in V.items():
+        f0, _f1, _dur, _w, cutoff, gain, *_ = p
+        touch_chunks.append(synth_purr(f0, cutoff, name in bigs))
+        touch_chunks.append(np.zeros(int(SR * .18), dtype=np.float32))
+        touch_chunks.append(synth_touch(f0, cutoff, gain, 'boop'))
+        touch_chunks.append(np.zeros(int(SR * .18), dtype=np.float32))
+        touch_chunks.append(synth_touch(f0, cutoff, gain, 'flick'))
+        touch_chunks.append(big_gap)
+    ta = np.clip(np.concatenate(touch_chunks), -.95, .95)
+    pcm2 = b''.join(struct.pack('<h', int(x * 32767)) for x in ta)
+    out2 = root / '动物交互音试听集.wav'
+    with wave.open(str(out2), 'wb') as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+        w.writeframes(pcm2)
+    print(f'生成 {out2}  {len(ta)/SR:.1f}s（每种动物：抚摸→被戳→甩尾）')
 
 
 if __name__ == '__main__':
