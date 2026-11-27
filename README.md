@@ -6,7 +6,7 @@
   </p>
   <p><img src="交付产物/造型验收-3D重绘.png" alt="3D 造型验收" width="640" /></p>
   <p>
-    <img src="https://img.shields.io/badge/version-1.0.1-orange?style=flat-square" alt="Version 1.0.1" />
+    <img src="https://img.shields.io/badge/version-1.0.2-orange?style=flat-square" alt="Version 1.0.2" />
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License" />
     <img src="https://img.shields.io/badge/Stack-Tauri%20v2%20%7C%20Rust%20%7C%20Three.js-818cf8?style=flat-square" alt="Tech Stack" />
   </p>
@@ -16,7 +16,7 @@
 
 DesktopPet 是一个能常驻桌面的虚拟宠物：透明置顶、会跟随你的键盘鼠标做动作、可以切换 13 种**独立建模**的动物、能喂食/喝水/玩耍/洗澡，状态缺了还会主动提醒你。还有一个给 AI 用的 MCP 接口，能让 AI 直接捏一只新宠物出来。
 
-本项目是 [qianyiai/KuroCat](https://github.com/qianyiai/KuroCat)（MIT）的二次开发版本。在原版桌面打字猫/AI 伴侣能力之上，重做了物种建模系统、品牌视觉、键盘配色和养成玩法，并重新设定为独立产品，当前版本 `1.0.1`。原作者版权声明按 MIT 要求完整保留在 [`LICENSE`](./LICENSE)。
+本项目是 [qianyiai/KuroCat](https://github.com/qianyiai/KuroCat)（MIT）的二次开发版本。在原版桌面打字猫/AI 伴侣能力之上，重做了物种建模系统、品牌视觉、键盘配色和养成玩法，并重新设定为独立产品，当前版本 `1.0.2`。原作者版权声明按 MIT 要求完整保留在 [`LICENSE`](./LICENSE)。
 
 > ⚠️ **渠道说明**：本项目是社区二次开发分支，**不是 KuroCat 官方版本**，与 `kurocat.org` 及原作者无关。任何以 KuroCat 官方名义分发的可执行文件都请自行核验来源。
 

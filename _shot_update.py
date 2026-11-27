@@ -31,7 +31,7 @@ MOCK = r"""
 window.__TAURI_INTERNALS__ = {
   invoke: async (cmd, args) => {
     const HK = 'kurocat_pet_care_v1';
-    if (cmd === 'get_app_version') return '1.0.1';
+    if (cmd === 'get_app_version') return '1.0.2';
     if (cmd === 'get_resolved_locale') return 'zh-CN';
     if (cmd === 'get_admin_status') return { supported: false, elevated: false };
     if (cmd === 'get_cached_update_info') return null;
@@ -44,13 +44,13 @@ window.__TAURI_INTERNALS__ = {
     if (cmd === 'check_for_update') {
       const mode = window.__UPDATE_MODE__ || 'current';
       if (mode === 'current') return {
-        currentVersion: '1.0.1', latestVersion: '1.0.1', hasUpdate: false,
+        currentVersion: '1.0.2', latestVersion: '1.0.2', hasUpdate: false,
         releaseUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.0',
         downloadUrl: null, assetSha256: null, assetSize: null,
         installKind: 'windows-nsis', notesSummary: ''
       };
       return {
-        currentVersion: '1.0.1', latestVersion: '1.2.0', hasUpdate: true,
+        currentVersion: '1.0.2', latestVersion: '1.2.0', hasUpdate: true,
         releaseUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.2.0',
         downloadUrl: 'https://github.com/daxian942-tech/DesktopPet/releases/download/v1.2.0/DesktopPet-setup-v1.2.0.exe',
         assetName: 'DesktopPet-setup-v1.2.0.exe',
