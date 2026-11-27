@@ -8,12 +8,12 @@ out = root / "_motions"
 out.mkdir(exist_ok=True)
 # virtual-time budget (ms) at which each signature beat reaches its peak
 peaks = {
-    "chiikawa": 4700,
-    "grasscow": 3800,
-    "milkdragon": 4300,
+    "chiikawa": 4700,   # sickle freeze peak
+    "grasscow": 7550,   # straw drop peak
+    "milkdragon": 4300, # duang + fire puff
     "capybara": 3300,
-    "loopy": 5200,
-    "bubu": 4600,
+    "loopy": 7500,      # shy face cover
+    "bubu": 6500,       # slumped collapse
 }
 
 chrome = r"C:/Program Files/Google/Chrome/Application/chrome.exe"

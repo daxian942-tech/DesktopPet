@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { resolveSpecies, type AnimalSpecies, type CatSkinConfig } from './catSkins';
-import { blenderGeometry } from './blenderMeshes';
+import { blenderGeometry, type BlenderPart } from './blenderMeshes';
 
 type Vec3 = readonly [number, number, number];
 type NonCatSpecies = Exclude<AnimalSpecies, 'cat'>;
@@ -435,6 +435,23 @@ export class IndependentSpecies3D {
       [radius * 2, length, radius * 2 * depthScale],
       rotation,
     );
+  }
+
+  /**
+   * Drop a Blender-authored character prototype straight into the scene.
+   * Prototypes keep their own local geometry (unit-fit or raw depending on the
+   * part), so `scale` is in the prototype's native units rather than the
+   * radius-1 convention of sphere().
+   */
+  private proto(
+    parent: THREE.Object3D,
+    name: BlenderPart,
+    mat: THREE.Material,
+    position: Vec3,
+    scale: Vec3,
+    rotation: Vec3 = [0, 0, 0],
+  ): THREE.Mesh {
+    return this.mesh(parent, blenderGeometry(name), mat, position, scale, rotation);
   }
 
   private box(
@@ -1134,6 +1151,15 @@ export class IndependentSpecies3D {
     this.tube(head, blue, [[-0.36, 0.43, 0.28], [-0.18, 0.37, 0.40], [0, 0.35, 0.44], [0.18, 0.37, 0.40], [0.36, 0.43, 0.28]], 0.032);
     this.trackHead(head);
 
+    // Mini weeding sickle held in the right paw, mounted on the wrist so it
+    // follows the whole arm chain. Blender-authored curved blade.
+    const steel = this.material(new THREE.Color('#c8ced6'), 0.42);
+    const grip = this.material(new THREE.Color('#8a5a3c'), 0.8);
+    const sickle = this.group(model, [0.62, 0.52, 0.30], [0.2, -0.35, -0.55]);
+    const bladeMat = this.material(new THREE.Color('#c8ced6'), 0.42);
+    this.proto(sickle, 'sickle', bladeMat, [0, 0, 0], [1.25, 1.25, 1.25]);
+    this.capsule(sickle, grip, [0.02, -0.02, 0.01], 0.032, 0.16, [1, 1, 1], [0, 0, Math.PI / 2]);
+
     this.motion((time, state) => {
       const awake = 1 - state.sleep;
       const cower = beatMotion(time, 7.8, 3.6, 5.8) * 0.7;
@@ -1147,12 +1173,20 @@ export class IndependentSpecies3D {
         limb.node.rotation.z += limb.side * cower * 0.35;
         limb.node.position.y += cower * 0.08;
       }
+      // Sickle paw freezes mid-raise on the beat ("举镰刀愣住").
+      const freeze = ((time % 7.8) + 7.8) % 7.8;
+      const stuck = freeze > 3.6 && freeze < 5.8 ? Math.sin(((freeze - 3.6) / 2.2) * Math.PI) : 0;
       for (const arm of chiArms) {
         const elbow = followBeat(time, 7.8, 3.6, 5.8, 0.10) * 0.7;
         const wrist = followBeat(time, 7.8, 3.6, 5.8, 0.20) * 0.7;
         arm.elbow.rotation.z = -arm.side * 0.12 + arm.side * elbow * 0.20;
         arm.wrist.rotation.z = arm.side * wrist * 0.16;
+        if (arm.side > 0) {
+          arm.elbow.rotation.z -= stuck * 0.55;
+          arm.wrist.rotation.z -= stuck * 0.30;
+        }
       }
+      sickle.rotation.z = -0.55 + stuck * 0.40;
       if (this.tail) {
         this.tail.node.rotation.z += Math.sin(time * 3.4) * 0.06 * awake;
         this.tail.node.rotation.y += followBeat(time, 7.8, 3.6, 5.8, 0.26) * 0.12;
@@ -1203,7 +1237,8 @@ export class IndependentSpecies3D {
     }
 
     const head = this.group(model, [0, 1.30, 0.66]);
-    this.sphere(head, white, [0, 0, 0], [0.62, 0.52, 0.46]);
+    // Blender boxy-round head: the meme cow's squared-off silhouette.
+    this.proto(head, 'cow_head', white, [0, 0, 0], [0.60, 0.52, 0.50]);
     // Irregular dark patches and the small white diamond on the forehead.
     this.sphere(head, patches, [-0.30, 0.34, 0.30], [0.25, 0.18, 0.12], [0, 0, -0.20], 20);
     this.sphere(head, patches, [0.35, 0.30, 0.30], [0.19, 0.14, 0.11], [0, 0, 0.22], 20);
@@ -1213,10 +1248,10 @@ export class IndependentSpecies3D {
       const ear = this.group(head, [side * 0.58, 0.10, -0.02], [0, 0, -side * 0.18]);
       this.sphere(ear, this.material(new THREE.Color('#6d6d70')), [side * 0.12, 0, 0], [0.26, 0.12, 0.17], [0, 0, side * 0.10], 18);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.24, 0.055, 0.45], 0.046, { aspect: 0.72 });
-      // Thick angry brows: inner ends low, outer ends high.
-      const brow = this.brow(head, [side * 0.24, 0.19, 0.47], 0.16, -side * 0.30, patches);
-      brow.scale.y = 1.6;
+      this.eye(head, [side * 0.24, 0.055, 0.45], 0.046, { aspect: 0.52 });
+      // Half-lidded deadpan brows: much flatter than the old angry slant.
+      const brow = this.brow(head, [side * 0.24, 0.16, 0.47], 0.16, -side * 0.10, patches);
+      brow.scale.y = 1.5;
     }
     this.tube(head, patches, [[0, 0.38, 0.49], [0, 0.26, 0.51], [0, 0.14, 0.52]], 0.026);
     this.sphere(head, pink, [0, -0.18, 0.43], [0.39, 0.25, 0.19]);
@@ -1226,6 +1261,11 @@ export class IndependentSpecies3D {
     // Big shocked "O" mouth with a pink lip ring.
     const mouthDark = this.sphere(head, ink, [0, -0.30, 0.615], [0.10, 0.14, 0.028], [0, 0, 0], 20);
     this.mesh(head, new THREE.TorusGeometry(0.11, 0.027, 12, 24), pink, [0, -0.30, 0.625], [1, 1.28, 1]);
+
+    // Straw dangling from the mouth; drops and gets chewed back on a cycle.
+    const strawMat = this.material(new THREE.Color('#9fbf4a'), 0.82);
+    const strawBase: Vec3 = [0.03, -0.34, 0.63];
+    const straw = this.proto(head, 'straw', strawMat, strawBase, [1, 1, 1], [0, 0, Math.PI / 2 + 0.25]);
     this.trackHead(head);
 
     const tail = this.group(model, [0, 0.97, -0.87]);
@@ -1252,6 +1292,14 @@ export class IndependentSpecies3D {
         this.tail.node.rotation.x += shock * 0.18;
         this.tail.node.rotation.z += followBeat(time, 8.4, 2.8, 4.8, 0.14) * 0.14;
       }
+      // Straw slips out of the mouth on a slow cycle, then a sudden head turn.
+      const dropout = ((time % 11.0) + 11.0) % 11.0;
+      const drop = dropout > 6.5 && dropout < 8.6 ? Math.sin(((dropout - 6.5) / 2.1) * Math.PI) : 0;
+      straw.position.set(strawBase[0] + drop * 0.22, strawBase[1] - drop * 0.30, strawBase[2]);
+      straw.rotation.z = Math.PI / 2 + 0.25 - drop * 0.9;
+      straw.rotation.x = drop * 0.5;
+      const jerk = dropout > 8.6 && dropout < 9.1 ? Math.sin(((dropout - 8.6) / 0.5) * Math.PI) : 0;
+      if (this.head) this.head.node.rotation.y += jerk * 0.28 * awake;
     });
   }
 
@@ -1264,9 +1312,10 @@ export class IndependentSpecies3D {
     const claw = this.material(new THREE.Color('#6b3a1f'));
 
     const body = this.group(model, [0, 0.75, -0.02]);
-    this.sphere(body, fur, [0, 0, 0], [0.69, 0.65, 0.55]);
+    // Blender barrel torso: a rounded, jiggly mass rather than a plain sphere.
+    this.proto(body, 'dragon_belly', fur, [0, 0, 0], [0.66, 0.62, 0.54]);
     // The duang belly is a front-facing dome, not a flat bib.
-    const duang = this.sphere(body, belly, [0, -0.07, 0.43], [0.50, 0.50, 0.17], [0, 0, 0], 28);
+    const duang = this.proto(body, 'dragon_belly', belly, [0, -0.07, 0.40], [0.42, 0.42, 0.30]);
     this.trackBody(body);
 
     const dragonArms: SoftLimbRef[] = [];
@@ -1292,14 +1341,21 @@ export class IndependentSpecies3D {
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    // Reference has no ears, no horns and no brows: just big eyes and one curve.
+    // Oversized round head (about half the body), no ears, no horns, no brows.
     const head = this.group(model, [0, 1.33, 0.04]);
-    this.sphere(head, fur, [0, 0, 0], [0.58, 0.49, 0.46]);
+    this.proto(head, 'dragon_head', fur, [0, 0, 0], [0.60, 0.53, 0.50]);
+    const greenIris = new THREE.Color('#57b34a');
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.20, 0.08, 0.455], 0.082, { iris: BLACK, pupil: BLACK, aspect: 0.95 });
+      this.eye(head, [side * 0.21, 0.07, 0.47], 0.095, { iris: greenIris, pupil: BLACK, aspect: 1.0 });
     }
-    this.mouthCurve(head, [0, -0.17, 0.475], 0.16, 0.03, ink, 0.017);
+    this.mouthCurve(head, [0, -0.17, 0.485], 0.16, 0.03, ink, 0.017);
     this.trackHead(head);
+
+    // Tiny fire puff: a small cone that pops on the duang beat ("喷小火苗").
+    const flameMat = this.material(new THREE.Color('#ff9a3c'), 0.5);
+    const flame = this.group(head, [0.20, -0.30, 0.42], [Math.PI / 2 - 0.35, 0, 0]);
+    this.cone(flame, flameMat, [0, 0.06, 0], 0.055, 0.16, [1, 1, 1], [0, 0, 0], 10);
+    flame.visible = false;
 
     const tail = this.group(model, [0, 0.55, -0.50], [0, 0.10, 0]);
     this.sphere(tail, fur, [0.18, -0.02, -0.08], [0.16, 0.16, 0.16], [0, 0, 0], 18);
@@ -1309,11 +1365,17 @@ export class IndependentSpecies3D {
     this.motion((time, state) => {
       const awake = 1 - state.sleep;
       const wobble = Math.sin(time * 2.5) * 0.045 * awake;
-      duang.scale.set(0.50 * (1 + wobble), 0.50 * (1 - wobble * 0.7), 0.17);
+      duang.scale.set(0.42 * (1 + wobble), 0.42 * (1 - wobble * 0.7), 0.30);
       const cycle = ((time % 8.6) + 8.6) % 8.6;
       const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin(((cycle - 3.2) / 2.2) * Math.PI) : 0;
       duang.scale.x *= 1 + duangBeat * 0.16;
       duang.scale.y *= 1 - duangBeat * 0.11;
+      // Fire puff only on the crest of the duang beat and only while awake.
+      flame.visible = awake > 0.4 && duangBeat > 0.45;
+      if (flame.visible) {
+        flame.scale.setScalar(0.7 + duangBeat * 0.6);
+        flame.rotation.z = Math.sin(time * 18) * 0.18;
+      }
       model.position.x += Math.sin(time * 1.35) * 0.018 * awake;
       if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.022 * awake;
       if (this.head) this.head.node.position.y += duangBeat * 0.025;
@@ -1442,7 +1504,8 @@ export class IndependentSpecies3D {
 
     // Broad flat beaver tail with the cross-hatched texture.
     const tail = this.group(model, [0.22, 0.25, -0.49], [0.08, -0.34, 0]);
-    this.sphere(tail, tailMat, [0, 0, -0.25], [0.46, 0.09, 0.61], [0, 0, 0], 24);
+    // Blender flat beaver tail with a cross-hatched texture.
+    this.proto(tail, 'beaver_tail', tailMat, [0, 0, -0.18], [0.62, 0.16, 0.72]);
     for (let i = -2; i <= 2; i++) {
       this.tube(tail, ink, [[i * 0.16, 0.085, -0.62], [i * 0.16, 0.10, -0.25], [i * 0.16, 0.075, 0.08]], 0.008);
     }
@@ -1482,15 +1545,18 @@ export class IndependentSpecies3D {
     this.sphere(head, ink, [0, -0.235, 0.475], [0.135, 0.095, 0.030], [0, 0, 0], 20);
     this.teeth(head, -0.245, 0.505, 0.085, 0.085);
 
-    // Two thin orange tufts from the reference.
+    // Single Blender-authored ahoge (one soft tuft) instead of two thin spikes.
     const tufts: THREE.Group[] = [];
-    for (const side of [-1, 1] as const) {
-      const tuft = this.group(head, [side * 0.06, 0.45, 0.015], [0, 0, -side * 0.20]);
-      this.taper(tuft, tuftMat, [side * 0.065, 0.17, 0], 0.011, 0.034, 0.34, 12);
-      this.sphere(tuft, tuftMat, [side * 0.125, 0.34, 0.01], [0.030, 0.038, 0.024], [0, 0, 0], 14);
-      this.trackEar(tuft, side);
-      tufts.push(tuft);
-    }
+    const tuft = this.group(head, [-0.22, 0.44, 0.02], [0, 0, 0.42]);
+    this.proto(tuft, 'ahoge', tuftMat, [0, 0, 0], [1.05, 1.05, 1.05]);
+    this.trackEar(tuft, -1);
+    tufts.push(tuft);
+
+    // Pink bow hair clip on the other side of the head.
+    const bowMat = this.material(new THREE.Color('#e86a93'), 0.66);
+    const bow = this.group(head, [0.34, 0.40, 0.10], [0, 0, -0.20]);
+    this.proto(bow, 'bow', bowMat, [0, 0, 0], [0.55, 0.55, 0.55]);
+    this.trackEar(bow, 1);
     this.trackHead(head);
 
     // Friendly wave with the raised paw, tail slap and swaying tufts.
@@ -1507,13 +1573,17 @@ export class IndependentSpecies3D {
           limb.node.position.y += wave * 0.06;
         }
       }
+      // Shy face-covering: the raised paw occasionally hides the cheek.
+      const shyCycle = ((time % 9.2) + 9.2) % 9.2;
+      const shy = shyCycle > 6.6 && shyCycle < 8.4 ? Math.sin(((shyCycle - 6.6) / 1.8) * Math.PI) : 0;
       for (const arm of loopyArms) {
         if (arm.side >= 0) continue;
         const elbow = followBeat(time, 9.2, 3.8, 6.6, 0.12);
         const wrist = followBeat(time, 9.2, 3.8, 6.6, 0.24);
-        arm.elbow.rotation.z = -arm.side * 0.08 + arm.side * elbow * 0.28;
-        arm.wrist.rotation.z = arm.side * wrist * 0.22;
+        arm.elbow.rotation.z = -arm.side * 0.08 + arm.side * elbow * 0.28 - shy * 0.80;
+        arm.wrist.rotation.z = arm.side * wrist * 0.22 - shy * 0.35;
       }
+      if (this.head) this.head.node.rotation.z += shy * 0.10;
       for (let i = 0; i < tufts.length; i++) {
         tufts[i].rotation.z += Math.sin(time * 2.1 + i * 1.4) * 0.06 * awake;
       }
@@ -1576,10 +1646,19 @@ export class IndependentSpecies3D {
     this.sphere(head, fur, [0, 0, 0], [0.57, 0.52, 0.47]);
     for (const side of [-1, 1] as const) {
       const ear = this.group(head, [side * 0.39, 0.39, -0.035]);
-      this.sphere(ear, fur, [0, 0, 0], [0.185, 0.185, 0.14], [0, 0, 0], 20);
+      if (side > 0) {
+        // Right ear droops like a worn plush toy (Blender floppy-ear proto).
+        this.proto(ear, 'floppy_ear', fur, [0.02, -0.14, 0], [0.95, 1.15, 0.75], [0, 0, 0.55]);
+      } else {
+        this.sphere(ear, fur, [0, 0, 0], [0.185, 0.185, 0.14], [0, 0, 0], 20);
+      }
       this.sphere(ear, this.material(p.innerEar), [0, 0, 0.115], [0.10, 0.10, 0.035], [0, 0, 0], 16);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.19, 0.04, 0.445], 0.045, { iris: BLACK, pupil: BLACK, aspect: 1.0 });
+      // Mismatched button eyes: one higher, one lower, neither one blinks.
+      const buttonMat = this.material(new THREE.Color(side < 0 ? '#3a2a22' : '#4a3529'), 0.55);
+      const by = side < 0 ? 0.085 : 0.015;
+      this.proto(head, 'button_eye', buttonMat, [side * 0.19, by, 0.45], side < 0 ? [1.0, 1.0, 1.0] : [0.82, 0.82, 1.0]);
+      this.sphere(head, this.material(new THREE.Color('#d8c9b0')), [side * 0.19 - 0.02, by + 0.02, 0.475], [0.014, 0.014, 0.008], [0, 0, 0], 10);
       this.sphere(head, blushMat, [side * 0.36, -0.10, 0.38], [0.115, 0.075, 0.025], [0, 0, 0], 16);
       for (let i = 0; i < 2; i++) {
         this.tube(head, this.material(new THREE.Color('#c9864f')), [
@@ -1588,10 +1667,16 @@ export class IndependentSpecies3D {
         ], 0.006);
       }
     }
-    // Tiny w mouth, no muzzle patch.
-    for (const side of [-1, 1] as const) {
-      this.tube(head, ink, [[-0.05, 0.012, 0], [-0.02, -0.024, 0], [0.025, -0.022, 0], [0.052, 0.010, 0]], 0.009, [side * 0.035, -0.15, 0.47]);
+    // Crooked stitched mouth: a slightly slanted seam with vertical stitches.
+    const threadMat = this.material(new THREE.Color('#8a6248'), 0.8);
+    this.tube(head, ink, [[-0.09, -0.14, 0.47], [-0.03, -0.17, 0.48], [0.03, -0.15, 0.48], [0.09, -0.18, 0.47]], 0.008);
+    for (let i = 0; i < 4; i++) {
+      const sx = -0.075 + i * 0.05;
+      this.tube(head, threadMat, [[sx, -0.155, 0.48], [sx + 0.008, -0.19, 0.48]], 0.006);
     }
+    // A loose thread poking out at the corner of the seam.
+    const looseThread = this.group(head, [0.10, -0.18, 0.47]);
+    this.tube(looseThread, threadMat, [[0, 0, 0], [0.05, 0.04, 0], [0.08, 0.02, 0]], 0.005);
     this.trackHead(head);
 
     // Calm nod and an occasional soft wave - Bubu never panics.
@@ -1599,10 +1684,16 @@ export class IndependentSpecies3D {
       const awake = 1 - state.sleep;
       const cycle = ((time % 7.6) + 7.6) % 7.6;
       const wave = cycle > 3.4 && cycle < 5.8 ? Math.sin(((cycle - 3.4) / 2.4) * Math.PI) : 0;
+      // Slumped plush: occasionally collapses, head lolls to one side.
+      const slumpCycle = ((time % 7.6) + 7.6) % 7.6;
+      const slump = slumpCycle > 5.8 && slumpCycle < 7.2 ? Math.sin(((slumpCycle - 5.8) / 1.4) * Math.PI) : 0;
+      model.position.y -= slump * 0.06 * awake;
+      if (this.body) this.body.node.rotation.z += slump * 0.05;
       if (this.head) {
-        this.head.node.rotation.x += Math.sin(time * 0.85) * 0.022 * awake + wave * 0.06;
-        this.head.node.rotation.z += Math.sin(time * 0.6) * 0.018 * awake;
+        this.head.node.rotation.x += Math.sin(time * 0.85) * 0.022 * awake + wave * 0.06 + slump * 0.12;
+        this.head.node.rotation.z += Math.sin(time * 0.6) * 0.018 * awake - slump * 0.20;
       }
+      looseThread.rotation.z = Math.sin(time * 2.4) * 0.25 * awake + slump * 0.5;
       for (const limb of this.limbs) {
         if (limb.front && limb.side > 0) {
           limb.node.rotation.z += wave * 0.85;

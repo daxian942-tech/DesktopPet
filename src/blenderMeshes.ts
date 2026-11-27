@@ -16,7 +16,19 @@
 import * as THREE from 'three';
 import meshData from './blenderMeshes.json';
 
-export type BlenderPart = 'sphere' | 'limb';
+export type BlenderPart =
+  | 'sphere'
+  | 'limb'
+  | 'dragon_head'
+  | 'dragon_belly'
+  | 'cow_head'
+  | 'straw'
+  | 'sickle'
+  | 'beaver_tail'
+  | 'ahoge'
+  | 'bow'
+  | 'button_eye'
+  | 'floppy_ear';
 
 interface RawPart {
   positions: number[][];
