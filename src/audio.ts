@@ -179,7 +179,8 @@ class CatAudio {
   private rebuild(): void {
     if (!this.ctx) return;
     // Keep the level the user is petting at, so a mid-stroke device switch does not stutter the purr
-    const keepIntensity = this.enabled ? this.currentIntensity : 0;
+    // 非猫物种静音：设备切换重建时也不重启猫呼噜
+    const keepIntensity = this.enabled && this.species === 'cat' ? this.currentIntensity : 0;
     const tone = this.currentPurrTone;
     this.teardownGraph();
     if (keepIntensity > 0.01 && this.ensurePurrGraph() && this.ctx && this.masterGain) {
@@ -343,7 +344,7 @@ class CatAudio {
         if (this.ctx !== targetCtx) return;
         this.purrBuffer = CatAudio.buildSeamlessPurrBuffer(targetCtx, decoded);
         // If user is currently petting on the temporary fallback buffer, smoothly swap to real cat audio
-        if (this.enabled && this.currentIntensity > 0.01 && this.graphReady && this.purrFilter) {
+        if (this.enabled && this.species === 'cat' && this.currentIntensity > 0.01 && this.graphReady && this.purrFilter) {
           this.stopPurrSource();
           this.startPurrLoopIfNeeded(targetCtx, true);
           this.applyPurrParams(targetCtx, this.currentIntensity, this.currentPurrTone, 0.08);
@@ -651,16 +652,10 @@ class CatAudio {
   public setPurrIntensity(intensity: number, tone: 'normal' | 'chin' | 'knead' = 'normal'): void {
     const target = this.enabled ? Math.max(0, Math.min(1, intensity)) : 0;
 
-    // 非猫物种：不播猫呼噜，改走各自的持续咕噜声
+    // 用户要求：除猫以外动物一律静音。非猫物种不播任何抚摸声。
     if (this.species !== 'cat') {
-      const changed = Math.abs(target - this.currentIntensity) >= 0.005;
-      this.currentIntensity = target;
-      this.currentPurrTone = tone;
-      if (target <= 0.01) {
-        this.stopCreaturePurr();
-      } else if (changed || this.creaturePurrTimer === null) {
-        this.driveCreaturePurr(target);
-      }
+      this.currentIntensity = 0;
+      this.stopCreaturePurr();
       return;
     }
 
@@ -703,15 +698,8 @@ class CatAudio {
    * Cute soft nose-boop squeak + tiny kitten sneeze puff!
    */
   public playBoopSneeze(): void {
-    // 非猫物种：优先真实录音的高音短片段（被戳一下的惊讶声），没有则合成
-    if (this.species !== 'cat') {
-      if (!this.enabled) return;
-      if (this.playAnimalSample(this.species, 1.22, 0.75)) return;
-      const c = this.ensureAudioContext();
-      if (!c) return;
-      playCreatureTouch(c, this.species, 'boop');
-      return;
-    }
+    // 用户要求：除猫以外动物一律静音
+    if (this.species !== 'cat') return;
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
@@ -783,15 +771,8 @@ class CatAudio {
    * Quick playful "bzzp / flick" chirp when tail is poked!
    */
   public playTailFlick(escalated = false): void {
-    // 非猫物种：优先真实录音的更快片段（甩尾），没有则合成
-    if (this.species !== 'cat') {
-      if (!this.enabled) return;
-      if (this.playAnimalSample(this.species, 1.34, 0.62)) return;
-      const c = this.ensureAudioContext();
-      if (!c) return;
-      playCreatureTouch(c, this.species, 'flick');
-      return;
-    }
+    // 用户要求：除猫以外动物一律静音
+    if (this.species !== 'cat') return;
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
@@ -826,6 +807,8 @@ class CatAudio {
    * Soft mochi "boing" thump on scruff landing!
    */
   public playSoftLand(): void {
+    // 用户要求：除猫以外动物一律静音
+    if (this.species !== 'cat') return;
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
@@ -911,6 +894,8 @@ class CatAudio {
    * 该物种没有真实录音时回退到程序化合成。
    */
   public playCreatureVoice(species: AnimalSpecies, action: CareVoiceAction): void {
+    // 用户要求：除猫以外动物一律静音（猫的喂食/喷水/玩耍声仍保留）
+    if (species !== 'cat') return;
     if (!this.enabled) return;
     try {
       const ctx = this.ensureAudioContext();
