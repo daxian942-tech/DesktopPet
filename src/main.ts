@@ -397,6 +397,11 @@ function performPetCareAction(action: PetCareAction): void {
     engine.triggerCareMood(mood, duration);
     engine3d?.triggerCareMood(mood, duration);
   }
+  // 每个物种有自己的叫声和吃相动作；声音只在设置开启时响。
+  if (settings.soundEnabled !== false && res.effective) {
+    const species = engine.customSkin?.species ?? 'cat';
+    catAudio.playCreatureVoice(species, action);
+  }
   agentCompanion.handleEvent({
     kind: res.effective ? 'action' : 'bubble',
     action: 'happy',

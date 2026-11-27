@@ -1,5 +1,7 @@
 import { TYPING_SOUND_WAV_B64, type TypingSoundSlot } from './typingSoundData';
 import { PURR_SOUND_MP3_B64 } from './purrSoundData';
+import { playCreatureVoice, type CareVoiceAction } from './creatureVoice';
+import type { AnimalSpecies } from './catSkins';
 
 const KEY_DOWN_SLOTS: readonly TypingSoundSlot[] = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];
 const KEY_UP_SLOTS: readonly TypingSoundSlot[] = ['up0', 'up1', 'up2', 'up3'];
@@ -853,6 +855,22 @@ class CatAudio {
       }
     } catch {
       // Never throw on blocked autoplay or missing audio hardware
+    }
+  }
+
+  /**
+   * 动物专属叫声（喂食 / 喝水 / 玩耍 / 洗澡）。
+   * 猫走真实呼噜/喵叫以外的情境音，其余物种走程序化合成的独特叫声。
+   * 不建立 purr 图，避免给非猫动物挂上猫呼噜节点。
+   */
+  public playCreatureVoice(species: AnimalSpecies, action: CareVoiceAction): void {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.ensureAudioContext();
+      if (!ctx) return;
+      playCreatureVoice(ctx, species, action);
+    } catch {
+      // 静默降级
     }
   }
 }

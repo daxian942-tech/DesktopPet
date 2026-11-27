@@ -811,10 +811,20 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
   const k = Math.min(w / 700, h / 720);
   const baseX = w / 2 - 15 * k;
   const baseY = h * 0.97 - 370 * k;
-  const hopMood = mood === 'happy' || mood === 'eat' || mood === 'play';
+  const isEating = mood === 'eat' && moodAmt > 0.01;
+  const isDrinking = mood === 'drink' && moodAmt > 0.01;
+  const hopMood = mood === 'happy' || mood === 'play' || (isEating && (species === 'bunny' || species === 'penguin'));
   const hop = hopMood ? -Math.abs(Math.sin(time * 8.2)) * 26 * moodAmt : 0;
   const lean = mood === 'drink' ? 0.09 * moodAmt : mood === 'bath' ? Math.sin(time * 9) * 0.05 * moodAmt : 0;
   const bob = Math.sin(time * 1.7) * 3.2 * (1 - sleep * 0.7) + breath * 1.6 * (1 - sleep * 0.5);
+
+  // 物种专属吃相：低头幅度 / 咀嚼节拍因动物而异
+  const chewHz: Partial<Record<string, number>> = {
+    grasscow: 2.6, dog: 5.2, fox: 4.6, panda: 3.0, bunny: 7.5,
+    penguin: 5.5, frog: 3.4, milkdragon: 3.2, chiikawa: 5.0,
+    capybara: 2.8, loopy: 4.0, bubu: 2.2,
+  };
+  const chew = (Math.sin(time * (chewHz[species] ?? 3.5) * Math.PI * 2) * 0.5 + 0.5) * moodAmt;
 
   ctx.save();
   ctx.globalAlpha = 0.22;
@@ -828,6 +838,16 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
   ctx.translate(baseX, baseY + bob + hop * k);
   ctx.scale(k, k);
   if (lean) ctx.rotate(lean);
+  // 进食时整体低头：牛/狗/熊猫幅度大，直立小动物幅度小
+  if (isEating || isDrinking) {
+    const dip: Partial<Record<string, number>> = {
+      grasscow: 0.075, dog: 0.055, fox: 0.05, panda: 0.045, capybara: 0.04,
+      bunny: 0.035, penguin: 0.03, frog: 0.01, milkdragon: 0.03,
+      chiikawa: 0.025, loopy: 0.025, bubu: 0.04,
+    };
+    ctx.rotate((isDrinking ? (dip[species] ?? 0.04) * 1.3 : (dip[species] ?? 0.04) + chew * 0.02) * moodAmt);
+    ctx.translate(0, (isDrinking ? 10 : 6) * moodAmt);
+  }
   if (sleep > 0.6) ctx.rotate(-0.03 * sleep);
   const P: Palette = {
     ctx,
@@ -847,6 +867,41 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
     eye: (x, y, rx, ry, color) => drawEye(P, x, y, rx, ry, color),
   };
   (RENDERERS[species] || drawCat)(P);
+
+  // 进食 / 喝水时，在脚边出现食物碗或水碗 + 咀嚼气泡。
+  // 画在地面固定位置，避免依赖各物种不同的嘴部局部坐标。
+  if ((isEating || isDrinking) && moodAmt > 0.01) {
+    const bowlY = 300;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, moodAmt * 1.4);
+    // 碗
+    ctx.fillStyle = isDrinking ? '#7fc4e8' : '#e8a866';
+    ctx.beginPath();
+    ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = isDrinking ? '#5aa9d6' : '#cf8a4a';
+    ctx.beginPath();
+    ctx.ellipse(0, bowlY + 5, 52, 13, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#5b4a3a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // 咀嚼 / 喝水气泡
+    const bubbles = isDrinking ? 2 : 3;
+    for (let i = 0; i < bubbles; i++) {
+      const ph = (time * 1.8 + i * 0.37) % 1;
+      const bx = (i - (bubbles - 1) / 2) * 22 + Math.sin(time * 3 + i) * 6;
+      const by = bowlY - 30 - ph * 45;
+      ctx.globalAlpha = Math.min(1, moodAmt) * (1 - ph) * 0.8;
+      ctx.fillStyle = isDrinking ? '#bfe8ff' : '#fff3d6';
+      ctx.beginPath();
+      ctx.arc(bx, by, isDrinking ? 6 + ph * 3 : 5 + ph * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   ctx.restore();
 }
 

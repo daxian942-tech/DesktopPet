@@ -319,6 +319,10 @@ export class IndependentSpecies3D {
 
     for (const motion of this.customMotions) motion(time, options);
 
+    // 物种专属的进食 / 喝水动作：在各自常驻动作之上叠加，
+    // 让牛低头嚼草、狗大口啃、兔子快速啄食……每台动物都不一样。
+    this.applyCareGesture(time, options.mood, options.moodAmt, awake);
+
     // Apply the tap after the species' own gesture so typing always reads
     // clearly, even while the animal is waving or dancing.
     for (const limb of this.limbs) {
@@ -610,6 +614,128 @@ export class IndependentSpecies3D {
 
   private motion(fn: MotionFn): void {
     this.customMotions.push(fn);
+  }
+
+  /**
+   * 物种专属的「进食 / 喝水」动作。
+   *
+   * 由养成系统的 mood = eat/drink 驱动，moodAmt 是 0..1 的动作包络。
+   * 每种动物的吃相都不一样：
+   *   牛     低头慢慢嚼草，喝水时头埋下去再仰起
+   *   狗/狐   大口啃，头上下轻点
+   *   熊猫   抱着啃，慢节奏
+   *   兔子   高频快速啄食（三连点）
+   *   企鹅   直头啄食，身体微前倾
+   *   青蛙   鼓腮吞咽
+   *   奶龙   捧着吃、满足地晃
+   *   吉伊   胆怯地小口吃
+   *   露比   抱着吃、耳朵抖
+   *   布布   瘫着嚼、头一点一点
+   *
+   * 这里只叠加增量旋转/位移，不覆盖各物种自己的常驻动作。
+   */
+  private applyCareGesture(time: number, mood: string, moodAmt: number, awake: number): void {
+    const amt = clamp01(moodAmt) * awake;
+    if (amt < 0.01 || (mood !== 'eat' && mood !== 'drink')) return;
+    const isDrink = mood === 'drink';
+    const sp = this.currentSpecies;
+
+    // 咀嚼 / 啄食节拍：不同物种频率不同
+    const chewHz: Partial<Record<AnimalSpecies, number>> = {
+      grasscow: 2.6, dog: 5.2, fox: 4.6, panda: 3.0, bunny: 7.5,
+      penguin: 5.5, frog: 3.4, milkdragon: 3.2, chiikawa: 5.0,
+      capybara: 2.8, loopy: 4.0, bubu: 2.2,
+    };
+    const hz = chewHz[sp] ?? 3.5;
+    const chew = (Math.sin(time * hz * Math.PI * 2) * 0.5 + 0.5) * amt;
+
+    if (this.head) {
+      const h = this.head.node;
+      switch (sp) {
+        case 'grasscow':
+          // 牛：吃草低头到草叶位置，喝水更低且仰头吞咽
+          h.rotation.x += (isDrink ? 0.30 + chew * 0.10 : 0.22 + chew * 0.07) * amt;
+          h.position.y -= (isDrink ? 0.10 : 0.07) * amt;
+          h.rotation.z += Math.sin(time * 1.6) * 0.02 * amt;
+          break;
+        case 'dog':
+        case 'fox':
+          // 犬科：大口啃，头上下点，喝水时舌头够水
+          h.rotation.x += (isDrink ? 0.26 : 0.16 + chew * 0.14) * amt;
+          h.position.y -= (isDrink ? 0.08 : 0.03) * amt;
+          break;
+        case 'panda':
+          // 熊猫：抱着慢慢啃，左右轻晃
+          h.rotation.x += (0.18 + chew * 0.09) * amt;
+          h.rotation.z += Math.sin(time * 1.9) * 0.05 * amt;
+          break;
+        case 'bunny':
+          // 兔子：高频三连啄
+          h.rotation.x += (0.20 + chew * 0.22) * amt;
+          h.position.y -= 0.02 * amt;
+          break;
+        case 'penguin':
+          // 企鹅：直头啄，身体前倾
+          h.rotation.x += (isDrink ? 0.14 : 0.24 + chew * 0.18) * amt;
+          break;
+        case 'frog':
+          // 青蛙：鼓腮吞咽，头微仰
+          h.position.y += (isDrink ? 0.03 : 0.015) * amt + chew * 0.02;
+          h.rotation.x -= 0.06 * amt;
+          break;
+        case 'milkdragon':
+          // 奶龙：捧着吃，满足地左右晃
+          h.rotation.z += Math.sin(time * 2.4) * 0.09 * amt;
+          h.rotation.x += (0.10 + chew * 0.06) * amt;
+          break;
+        case 'chiikawa':
+          // 吉伊：胆怯小口，缩着吃
+          h.rotation.x += (0.14 + chew * 0.05) * amt;
+          h.position.y -= 0.03 * amt;
+          break;
+        case 'capybara':
+          // 水豚：慢悠悠地嚼
+          h.rotation.x += (0.16 + chew * 0.08) * amt;
+          break;
+        case 'loopy':
+          // 露比：抱着吃，耳朵会跟着抖
+          h.rotation.z += Math.sin(time * 3.0) * 0.05 * amt;
+          h.rotation.x += (0.12 + chew * 0.06) * amt;
+          break;
+        case 'bubu':
+          // 布布：瘫着嚼，头一点一点
+          h.rotation.x += (0.20 + chew * 0.12) * amt;
+          h.rotation.z += 0.10 * amt;
+          break;
+        default:
+          h.rotation.x += (0.14 + chew * 0.08) * amt;
+      }
+    }
+
+    // 前肢：直立动物把爪子抬到嘴边（捧着吃），四足动物前腿微屈
+    const upright = sp === 'milkdragon' || sp === 'chiikawa' || sp === 'loopy'
+      || sp === 'bubu' || sp === 'penguin' || sp === 'cat';
+    for (const limb of this.limbs) {
+      if (!limb.front) continue;
+      if (upright) {
+        limb.node.rotation.x -= (isDrink ? 0.55 : 0.42 + chew * 0.10) * amt;
+        limb.node.position.y += 0.06 * amt;
+      } else {
+        limb.node.rotation.x += (isDrink ? 0.14 : 0.08 + chew * 0.05) * amt;
+      }
+    }
+
+    // 耳朵随咀嚼轻抖（露比 / 兔子 / 吉伊最明显）
+    if (sp === 'loopy' || sp === 'bunny' || sp === 'chiikawa') {
+      for (const ear of this.ears) {
+        ear.node.rotation.z += ear.side * chew * 0.10;
+      }
+    }
+
+    // 尾巴：吃东西时开心地小摇
+    if (this.tail) {
+      this.tail.node.rotation.y += Math.sin(time * (3 + hz * 0.4)) * 0.08 * amt;
+    }
   }
 
   /**
