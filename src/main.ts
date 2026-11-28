@@ -330,6 +330,8 @@ let careQuickbarOpen = false;
 let careQuickbarTimer: number | null = null;
 let careQuickbarLeaveTimer: number | null = null;
 let careQuickbarHover = false;
+let careQuickbarAnchorX: number | null = null;
+let careQuickbarAnchorY: number | null = null;
 
 /** Register the quick-bar rect with the Rust hit-test loop so the transparent
  *  window stays clickable over it (same mechanism as the tail picker). */
@@ -339,14 +341,21 @@ function syncCareQuickbarBounds(): void {
     void invoke('set_care_popover_bounds', { bounds: null }).catch(() => {});
     return;
   }
-  const r = careQuickbarEl.getBoundingClientRect();
+  // Use layout offsets instead of getBoundingClientRect(): the open animation
+  // temporarily scales the bar, which would make the Rust hit-test region too
+  // small for the first ~180ms.
+  const left = careQuickbarEl.offsetLeft;
+  const top = careQuickbarEl.offsetTop;
+  const right = left + careQuickbarEl.offsetWidth;
+  const bottom = top + careQuickbarEl.offsetHeight;
   const w = window.innerWidth || 1;
   const h = window.innerHeight || 1;
-  // pad a little so the round buttons' hover ring stays clickable too
-  const pad = 4;
+  // Pad enough for hover rings and the little pointer triangle.
+  const pad = careQuickbarEl.classList.contains('care-quickbar--micro') ? 5 : 8;
+  const clamp = (v: number): number => Math.max(0, Math.min(1, v));
   const bounds = [
-    (r.left - pad) / w, (r.top - pad) / h,
-    (r.right + pad) / w, (r.bottom + pad) / h,
+    clamp((left - pad) / w), clamp((top - pad) / h),
+    clamp((right + pad) / w), clamp((bottom + pad) / h),
   ];
   void invoke('set_care_popover_bounds', { bounds }).catch(() => {});
 }
@@ -359,18 +368,39 @@ function renderCareQuickbar(state: PetCareState): void {
   });
 }
 
-/** Position the four buttons just above where the pet was tapped (its head). */
+/** Adapt the quick bar to tiny pet windows before measuring/positioning it. */
+function updateCareQuickbarLayout(): void {
+  if (!careQuickbarEl) return;
+  const vw = window.innerWidth || 1;
+  const vh = window.innerHeight || 1;
+  // 20%-30% scales can produce a 100x100 logical window. A single row cannot
+  // fit there, so fall back to a 2x2 icon grid; 40%-60% uses a tighter row.
+  const micro = vw < 210 || vh < 110;
+  careQuickbarEl.classList.toggle('care-quickbar--micro', micro);
+  careQuickbarEl.classList.toggle('care-quickbar--compact', !micro && (vw < 270 || vh < 120));
+}
+
+/** Position the four buttons without letting them leave the tiny pet window. */
 function placeCareQuickbar(clientX?: number, clientY?: number): void {
   if (!careQuickbarEl) return;
-  const w = careQuickbarEl.offsetWidth || 250;
-  const h = careQuickbarEl.offsetHeight || 66;
-  const cx = clientX ?? window.innerWidth / 2;
-  const cy = clientY ?? window.innerHeight * 0.55;
-  const left = Math.max(6, Math.min(window.innerWidth - w - 6, cx - w / 2));
-  // sit above the tap point with a small gap for the little pointer triangle
-  const top = Math.max(6, Math.min(window.innerHeight - h - 6, cy - h - 24));
-  careQuickbarEl.style.left = `${left}px`;
-  careQuickbarEl.style.top = `${top}px`;
+  updateCareQuickbarLayout();
+  const vw = window.innerWidth || 1;
+  const vh = window.innerHeight || 1;
+  const w = careQuickbarEl.offsetWidth || 100;
+  const h = careQuickbarEl.offsetHeight || 54;
+  const margin = 5;
+  const cx = Math.max(0, Math.min(vw, clientX ?? vw / 2));
+  const cy = Math.max(0, Math.min(vh, clientY ?? vh * 0.55));
+  const maxLeft = Math.max(margin, vw - w - margin);
+  const maxTop = Math.max(margin, vh - h - margin);
+  const left = Math.max(margin, Math.min(maxLeft, cx - w / 2));
+  // In micro mode the bar itself is compact enough to dock at the top, which
+  // keeps it fully visible instead of clamping it over the tiny cat's face.
+  const top = careQuickbarEl.classList.contains('care-quickbar--micro')
+    ? margin
+    : Math.max(margin, Math.min(maxTop, cy - h - 20));
+  careQuickbarEl.style.left = `${Math.round(left)}px`;
+  careQuickbarEl.style.top = `${Math.round(top)}px`;
 }
 
 /** Cancel a pending "mouse left the pet" hide. */
@@ -402,11 +432,14 @@ function scheduleCareQuickbarAutoHide(): void {
 function openCareQuickbar(clientX?: number, clientY?: number): void {
   if (!careQuickbarEl || settings.clickThroughLocked) return;
   cancelCareQuickbarLeave();
+  careQuickbarAnchorX = typeof clientX === 'number' && Number.isFinite(clientX) ? clientX : null;
+  careQuickbarAnchorY = typeof clientY === 'number' && Number.isFinite(clientY) ? clientY : null;
   careQuickbarOpen = true;
   careQuickbarEl.classList.remove('hidden');
-  placeCareQuickbar(clientX, clientY);
+  placeCareQuickbar(careQuickbarAnchorX ?? undefined, careQuickbarAnchorY ?? undefined);
   renderCareQuickbar(getPetCareState());
   syncCareQuickbarBounds();
+  requestAnimationFrame(() => syncWin7OverlayFn?.(false));
   scheduleCareQuickbarAutoHide();
 }
 
@@ -415,12 +448,15 @@ function closeCareQuickbar(): void {
   if (!careQuickbarOpen) return;
   careQuickbarOpen = false;
   careQuickbarHover = false;
+  careQuickbarAnchorX = null;
+  careQuickbarAnchorY = null;
   if (careQuickbarTimer !== null) {
     window.clearTimeout(careQuickbarTimer);
     careQuickbarTimer = null;
   }
   careQuickbarEl?.classList.add('hidden');
   syncCareQuickbarBounds();
+  requestAnimationFrame(() => syncWin7OverlayFn?.(false));
 }
 
 // 提醒气泡的关闭按钮
@@ -450,6 +486,12 @@ careQuickbarEl?.addEventListener('click', (e) => {
   if (isPetCareAction(action)) performPetCareAction(action);
   // keep the bar open after a tap so users can chain actions, but restart the timer
   scheduleCareQuickbarAutoHide();
+});
+// The entrance animation scales the bar; re-sync the clickable rect once it settles.
+careQuickbarEl?.addEventListener('animationend', (e) => {
+  if (e.target !== careQuickbarEl || !careQuickbarOpen) return;
+  syncCareQuickbarBounds();
+  requestAnimationFrame(() => syncWin7OverlayFn?.(false));
 });
 
 function updatePetCareUI(state: PetCareState): void {
@@ -1712,6 +1754,11 @@ async function bootstrap(): Promise<void> {
 
   window.addEventListener('resize', () => {
     if (tailPickerOpen) syncTailPickerBounds();
+    if (careQuickbarOpen) {
+      placeCareQuickbar(careQuickbarAnchorX ?? undefined, careQuickbarAnchorY ?? undefined);
+      syncCareQuickbarBounds();
+      requestAnimationFrame(() => syncWin7OverlayFn?.(false));
+    }
   });
   tailPickerBarEl.addEventListener('animationend', () => {
     if (!tailPickerOpen) return;
@@ -2411,6 +2458,18 @@ async function bootstrap(): Promise<void> {
               Math.min(physW, Math.ceil(rect.right * dpr)),
               Math.min(physH, Math.ceil(rect.bottom * dpr)),
               Math.round(radius * dpr),
+            );
+          }
+        }
+        if (careQuickbarEl && !careQuickbarEl.classList.contains('hidden')) {
+          const r = careQuickbarEl.getBoundingClientRect();
+          if (r.width > 2 && r.height > 2) {
+            rects.push(
+              Math.max(0, Math.floor(r.left * dpr)),
+              Math.max(0, Math.floor(r.top * dpr)),
+              Math.min(physW, Math.ceil(r.right * dpr)),
+              Math.min(physH, Math.ceil(r.bottom * dpr)),
+              Math.round((careQuickbarEl.classList.contains('care-quickbar--micro') ? 8 : 14) * dpr),
             );
           }
         }

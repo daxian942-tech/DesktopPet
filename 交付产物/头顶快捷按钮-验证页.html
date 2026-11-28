@@ -2,27 +2,62 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>头顶快捷按钮 - 缩小时布局验证</title>
+  <link rel="stylesheet" href="../src/desktopPetTheme.css">
   <style>
-    html,body{margin:0;width:100%;height:100%;background:#dfe6ea;overflow:hidden}
-    .stage{position:relative;width:100%;height:100%;
-      background:radial-gradient(circle at 50% 62%, #eef3f5 0%, #cfd9df 70%)}
-    /* pet head stand-in */
-    .head{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);
-      width:190px;height:170px;border-radius:50%;background:#3a3735;
-      box-shadow:inset 0 -8px 18px rgba(0,0,0,.25)}
-    .head::before,.head::after{content:'';position:absolute;top:34px;width:22px;height:26px;border-radius:50%;background:#fff}
-    .head::before{left:56px}.head::after{right:56px}
-    .cap{position:absolute;left:50%;top:calc(58% - 118px);transform:translateX(-50%);
-      color:#8b8379;font:600 12px system-ui,sans-serif}
+    html, body {
+      margin: 0;
+      min-width: 100%;
+      min-height: 100%;
+      overflow: hidden;
+      background: #20242b;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      padding: 10px;
+    }
+    .stage {
+      position: relative;
+      flex: 0 0 auto;
+      width: 420px;
+      height: 440px;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 62%, #eef3f5 0%, #cfd9df 70%);
+    }
+    .head {
+      position: absolute;
+      left: 50%;
+      top: 62%;
+      width: min(78%, 190px);
+      height: min(70%, 170px);
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: #3a3735;
+      box-shadow: inset 0 -8px 18px rgba(0, 0, 0, .25);
+    }
+    .head::before, .head::after {
+      content: '';
+      position: absolute;
+      top: 28%;
+      width: 18%;
+      height: 18%;
+      border-radius: 50%;
+      background: #fff;
+    }
+    .head::before { left: 27%; }
+    .head::after { right: 27%; }
+    .case-label {
+      display: none;
+    }
   </style>
-  <link rel="stylesheet" href="./dist/assets/i18n-AwbpFb9r.css">
 </head>
 <body>
-  <div class="stage">
-    <div class="cap">↑ 头顶快捷按钮条（点击桌宠后出现）</div>
-    <!-- real markup copied verbatim from index.html -->
-    <div id="care-quickbar" class="care-quickbar" role="toolbar" aria-label="照顾桌宠快捷操作"
-         style="left:50%; top:calc(58% - 250px); transform:translateX(-50%)">
+  <div class="stage" id="stage">
+    <div id="care-quickbar" class="care-quickbar" role="toolbar" aria-label="照顾桌宠快捷操作">
       <button class="care-quick-btn is-recommended" data-care-action="feed" type="button" title="喂食" aria-label="喂食">
         <span class="cq-emoji">🍖</span><span class="cq-label">喂食</span>
       </button>
@@ -38,5 +73,51 @@
     </div>
     <div class="head"></div>
   </div>
+  <div class="case-label" id="case-label"></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const stage = document.getElementById('stage');
+    const bar = document.getElementById('care-quickbar');
+    const head = document.querySelector('.head');
+    const label = document.getElementById('case-label');
+    const requestedW = Math.max(80, Math.min(600, Number(params.get('w')) || 420));
+    const requestedH = Math.max(80, Math.min(600, Number(params.get('h')) || 440));
+    stage.style.width = `${requestedW}px`;
+    stage.style.height = `${requestedH}px`;
+
+    // Mirrors updateCareQuickbarLayout()/placeCareQuickbar() in src/main.ts.
+    function updateLayout(vw, vh) {
+      const micro = vw < 210 || vh < 110;
+      bar.classList.toggle('care-quickbar--micro', micro);
+      bar.classList.toggle('care-quickbar--compact', !micro && (vw < 270 || vh < 120));
+    }
+
+    function place() {
+      const vw = stage.clientWidth || 1;
+      const vh = stage.clientHeight || 1;
+      updateLayout(vw, vh);
+      const w = bar.offsetWidth || 100;
+      const h = bar.offsetHeight || 54;
+      const margin = 5;
+      const cx = vw / 2;
+      const cy = vh * 0.62;
+      const maxLeft = Math.max(margin, vw - w - margin);
+      const maxTop = Math.max(margin, vh - h - margin);
+      const left = Math.max(margin, Math.min(maxLeft, cx - w / 2));
+      const top = bar.classList.contains('care-quickbar--micro')
+        ? margin
+        : Math.max(margin, Math.min(maxTop, cy - h - 20));
+      bar.style.left = `${Math.round(left)}px`;
+      bar.style.top = `${Math.round(top)}px`;
+      const mode = bar.classList.contains('care-quickbar--micro')
+        ? '微型 2×2'
+        : bar.classList.contains('care-quickbar--compact') ? '紧凑横排' : '标准横排';
+      label.textContent = `${vw}×${vh} ${mode}`;
+      head.style.opacity = bar.classList.contains('care-quickbar--micro') ? '.72' : '1';
+    }
+
+    place();
+  </script>
 </body>
 </html>
