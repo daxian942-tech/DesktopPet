@@ -1022,7 +1022,9 @@ export class KuroCatEngine3D {
       premultipliedAlpha: true,
       powerPreference: 'low-power',
     });
-    this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+    // 扁平卡通造型不需要 1.5x 超采样：1.35x 省下约 19% 像素填充，
+    // 轮廓线靠几何外扩而不是抗锯齿，画质几乎无损。
+    this.renderer.setPixelRatio(Math.min(1.35, window.devicePixelRatio || 1));
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 

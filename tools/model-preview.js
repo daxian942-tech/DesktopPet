@@ -17398,9 +17398,9 @@
       this.type = "RawShaderMaterial";
     }
   };
-  var MeshStandardMaterial = class extends Material {
+  var MeshToonMaterial = class extends Material {
     /**
-     * Constructs a new mesh standard material.
+     * Constructs a new mesh toon material.
      *
      * @param {Object} [parameters] - An object with one or more properties
      * defining the material's appearance. Any property of the material
@@ -17410,13 +17410,12 @@
      */
     constructor(parameters) {
       super();
-      this.isMeshStandardMaterial = true;
-      this.type = "MeshStandardMaterial";
-      this.defines = { "STANDARD": "" };
+      this.isMeshToonMaterial = true;
+      this.defines = { "TOON": "" };
+      this.type = "MeshToonMaterial";
       this.color = new Color(16777215);
-      this.roughness = 1;
-      this.metalness = 0;
       this.map = null;
+      this.gradientMap = null;
       this.lightMap = null;
       this.lightMapIntensity = 1;
       this.aoMap = null;
@@ -17432,27 +17431,19 @@
       this.displacementMap = null;
       this.displacementScale = 1;
       this.displacementBias = 0;
-      this.roughnessMap = null;
-      this.metalnessMap = null;
       this.alphaMap = null;
-      this.envMap = null;
-      this.envMapRotation = new Euler();
-      this.envMapIntensity = 1;
       this.wireframe = false;
       this.wireframeLinewidth = 1;
       this.wireframeLinecap = "round";
       this.wireframeLinejoin = "round";
-      this.flatShading = false;
       this.fog = true;
       this.setValues(parameters);
     }
     copy(source) {
       super.copy(source);
-      this.defines = { "STANDARD": "" };
       this.color.copy(source.color);
-      this.roughness = source.roughness;
-      this.metalness = source.metalness;
       this.map = source.map;
+      this.gradientMap = source.gradientMap;
       this.lightMap = source.lightMap;
       this.lightMapIntensity = source.lightMapIntensity;
       this.aoMap = source.aoMap;
@@ -17468,17 +17459,11 @@
       this.displacementMap = source.displacementMap;
       this.displacementScale = source.displacementScale;
       this.displacementBias = source.displacementBias;
-      this.roughnessMap = source.roughnessMap;
-      this.metalnessMap = source.metalnessMap;
       this.alphaMap = source.alphaMap;
-      this.envMap = source.envMap;
-      this.envMapRotation.copy(source.envMapRotation);
-      this.envMapIntensity = source.envMapIntensity;
       this.wireframe = source.wireframe;
       this.wireframeLinewidth = source.wireframeLinewidth;
       this.wireframeLinecap = source.wireframeLinecap;
       this.wireframeLinejoin = source.wireframeLinejoin;
-      this.flatShading = source.flatShading;
       this.fog = source.fog;
       return this;
     }
@@ -32146,6 +32131,21 @@ void main() {
     // Lulu's huge orange muzzle is the whole character - keep it facing forward.
     capybara: 0.18
   };
+  var KEYCAP_TOP_WORLD_Y = 0.183;
+  var SPECIES_ROOT_SCALE = 0.9;
+  var PALM_TARGET_Z = 1.22;
+  var TYPING_HAND_SHOULDER_Y = {
+    bunny: 0.84,
+    penguin: 1.02,
+    frog: 0.54,
+    chiikawa: 0.78,
+    milkdragon: 0.8,
+    loopy: 0.82,
+    bubu: 0.82
+  };
+  var OUTLINE_MIN_SIZE = 0.3;
+  var OUTLINE_WIDTH = 0.024;
+  var OUTLINE_COLOR = "#332a30";
   function clamp01(value) {
     return Math.max(0, Math.min(1, value));
   }
@@ -32168,7 +32168,15 @@ void main() {
     currentSpecies = "cat";
     skinKey = "";
     palette = null;
+    /** 赛璐璐材质：按颜色缓存，全物种共用，换皮肤时统一释放 */
     materials = /* @__PURE__ */ new Map();
+    /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
+    geoCache = /* @__PURE__ */ new Map();
+    gradientMap;
+    outlineMat = null;
+    groundMat = null;
+    /** 本只动物是否已经建了伸向键盘的打字手（没有的统一补一对） */
+    hasTypingHands = false;
     body = null;
     head = null;
     tail = null;
@@ -32188,10 +32196,16 @@ void main() {
       this.root.name = "independent-species-root";
       this.root.scale.setScalar(0.9);
       scene.add(this.root);
-      const sky = new HemisphereLight("#fff8ed", "#586272", 1.65);
+      const steps = new Uint8Array([168, 214, 255]);
+      this.gradientMap = new DataTexture(steps, steps.length, 1, RedFormat);
+      this.gradientMap.minFilter = NearestFilter;
+      this.gradientMap.magFilter = NearestFilter;
+      this.gradientMap.generateMipmaps = false;
+      this.gradientMap.needsUpdate = true;
+      const sky = new HemisphereLight("#fff6ec", "#6d6070", 0.78);
       sky.name = "independent-species-fill";
       scene.add(sky);
-      const key = new DirectionalLight("#ffffff", 2.15);
+      const key = new DirectionalLight("#ffffff", 0.92);
       key.name = "independent-species-key";
       key.position.set(-3.2, 5.4, 4.6);
       scene.add(key);
@@ -32216,6 +32230,15 @@ void main() {
       this.model.name = `independent-${species}`;
       this.model.rotation.y = QUADRUPED_YAW[species] ?? 0;
       this.root.add(this.model);
+      const ground = new Mesh(
+        this.cachedGeometry("ground", () => new CircleGeometry(1, 28)),
+        this.getGroundMat()
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.scale.set(0.7, 0.4, 1);
+      ground.position.set(0, 5e-3, 0.2);
+      ground.renderOrder = -2;
+      this.model.add(ground);
       this.buildSpecies(species);
       this.buildExpressions();
     }
@@ -32313,30 +32336,25 @@ void main() {
         limb.node.scale.copy(limb.scale);
         limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.018 * awake;
         if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
+        if (limb.paw && limb.pawBaseY !== void 0) {
+          limb.paw.position.y = limb.pawBaseY;
+          limb.paw.scale.set(1, 1, 1);
+        }
       }
       for (const motion of this.customMotions) motion(time, options);
       this.applyCareGesture(time, options.mood, options.moodAmt, awake);
       for (const limb of this.limbs) {
-        const isHand = limb.arm === true;
-        if (!isHand && !limb.front) continue;
+        if (!limb.arm) continue;
         const isLeft = limb.side < 0;
         const tap = (isLeft ? tapLeft : tapRight) * awake;
         if (tap < 2e-3) continue;
         const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-        if (isHand) {
-          limb.node.rotation.x += 0.26 * tap;
-          limb.node.position.y -= 0.07 * tap;
-          limb.node.position.z += 0.045 * tap;
-        } else {
-          limb.node.rotation.x -= 0.28 * tap;
-          limb.node.position.y += 0.075 * tap;
-        }
-        limb.node.rotation.z += limb.side * (isHand ? 0.05 : 0.03) * tap;
-        if (limb.soft) {
-          limb.soft.elbow.rotation.x += (isHand ? 0.26 : 0.2) * tap;
-          limb.soft.elbow.rotation.z += limb.side * (isHand ? 0.06 : 0.05) * tap;
-          limb.soft.wrist.rotation.x += (isHand ? 0.19 : 0.14) * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
-          limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
+        limb.node.rotation.x += 0.075 * tap;
+        limb.node.rotation.z += limb.side * 0.022 * tap;
+        if (limb.paw && limb.pawBaseY !== void 0) {
+          const press = 0.044 * tap * (0.82 + 0.18 * Math.sin(phase + 0.4));
+          limb.paw.position.y = limb.pawBaseY - press;
+          limb.paw.scale.set(1 + 0.07 * tap, 1 - 0.14 * tap, 1 + 0.05 * tap);
         }
       }
       const typingAmt = Math.max(this.typingPress.left, this.typingPress.right) * awake;
@@ -32372,13 +32390,74 @@ void main() {
         catchlight: skin.eyeCatchlight !== false
       };
     }
+    /**
+     * 扁平赛璐璐材质。`roughness` 不再表示镜面粗糙度（toon 没有高光），而是
+     * 借用来给眼睛 / 掌垫这类小件一点明度区分，保持原有调用点的语义不破。
+     */
     material(color, roughness = 0.78) {
       const key = `${color.getHexString()}:${roughness.toFixed(2)}`;
       const cached = this.materials.get(key);
       if (cached) return cached;
-      const mat = new MeshStandardMaterial({ color, roughness, metalness: 0 });
+      const shade = 0.9 + Math.min(1, Math.max(0, roughness)) * 0.1;
+      const mat = new MeshToonMaterial({
+        color: color.clone().multiplyScalar(shade),
+        gradientMap: this.gradientMap
+      });
       this.materials.set(key, mat);
       return mat;
+    }
+    /** 共享几何：同一细分参数的球 / 胶囊只创建一次，并标记为 shared 防止被 dispose */
+    cachedGeometry(key, make) {
+      let geometry = this.geoCache.get(key);
+      if (!geometry) {
+        geometry = make();
+        geometry.userData.shared = true;
+        this.geoCache.set(key, geometry);
+      }
+      return geometry;
+    }
+    /** 深色轮廓材质：inverted-hull 只渲染背面，被自身正面挡住后只剩外圈一条线 */
+    getOutlineMat() {
+      if (!this.outlineMat) {
+        this.outlineMat = new MeshBasicMaterial({
+          color: OUTLINE_COLOR,
+          side: BackSide
+        });
+        this.outlineMat.userData.shared = true;
+      }
+      return this.outlineMat;
+    }
+    /** 贴纸式接地阴影：一块淡色椭圆，替代 3D 阴影贴图，解决团子悬浮感 */
+    getGroundMat() {
+      if (!this.groundMat) {
+        this.groundMat = new MeshBasicMaterial({
+          color: "#4c4048",
+          transparent: true,
+          opacity: 0.13,
+          depthWrite: false,
+          side: DoubleSide
+        });
+        this.groundMat.userData.shared = true;
+      }
+      return this.groundMat;
+    }
+    /**
+     * 给构成剪影的大件加一圈深色轮廓线。小零件（眼睛、腮红、掌垫）不加，
+     * 否则会出现一堆黑圈、把表情糊掉，也让 draw call 白白翻倍。
+     */
+    addOutline(parent, geometry, position, scale, rotation) {
+      const size = Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]));
+      if (size < OUTLINE_MIN_SIZE) return;
+      const outline = new Mesh(geometry, this.getOutlineMat());
+      outline.position.set(...position);
+      outline.rotation.set(...rotation);
+      outline.scale.set(
+        scale[0] + OUTLINE_WIDTH,
+        scale[1] + OUTLINE_WIDTH,
+        scale[2] + OUTLINE_WIDTH
+      );
+      outline.renderOrder = -1;
+      parent.add(outline);
     }
     group(parent, position = [0, 0, 0], rotation = [0, 0, 0]) {
       const group = new Group();
@@ -32392,14 +32471,19 @@ void main() {
       mesh.position.set(...position);
       mesh.scale.set(...scale);
       mesh.rotation.set(...rotation);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
       parent.add(mesh);
       return mesh;
     }
     sphere(parent, mat, position, scale, rotation = [0, 0, 0], detail = 24) {
-      const geometry = detail >= 22 ? blenderGeometry("sphere") : new SphereGeometry(1, detail, Math.max(12, detail * 0.667));
-      return this.mesh(parent, geometry, mat, position, scale, rotation);
+      const seg = Math.max(8, Math.round(detail * 0.62));
+      const rings = Math.max(6, Math.round(seg * 0.68));
+      const geometry = this.cachedGeometry(
+        `sphere:${seg}:${rings}`,
+        () => new SphereGeometry(1, seg, rings)
+      );
+      const mesh = this.mesh(parent, geometry, mat, position, scale, rotation);
+      this.addOutline(parent, geometry, position, scale, rotation);
+      return mesh;
     }
     /**
      * Blender-authored organic limb. The prototype spans y in [-0.5, 0.5] with
@@ -32428,18 +32512,36 @@ void main() {
       return this.mesh(parent, blenderGeometry(name), mat, position, scale, rotation);
     }
     box(parent, mat, position, scale, rotation = [0, 0, 0]) {
-      return this.mesh(parent, new BoxGeometry(1, 1, 1, 2, 2, 2), mat, position, scale, rotation);
+      return this.mesh(
+        parent,
+        this.cachedGeometry("box", () => new BoxGeometry(1, 1, 1, 1, 1, 1)),
+        mat,
+        position,
+        scale,
+        rotation
+      );
     }
     capsule(parent, mat, position, radius, length, scale = [1, 1, 1], rotation = [0, 0, 0]) {
-      const geometry = new CapsuleGeometry(radius, Math.max(0.01, length - radius * 2), 6, 14);
+      const shaft = Math.max(0.01, length - radius * 2);
+      const geometry = this.cachedGeometry(
+        `capsule:${radius.toFixed(3)}:${shaft.toFixed(3)}`,
+        () => new CapsuleGeometry(radius, shaft, 4, 10)
+      );
       return this.mesh(parent, geometry, mat, position, scale, rotation);
     }
     cone(parent, mat, position, radius, height, scale = [1, 1, 1], rotation = [0, 0, 0], sides = 20) {
-      return this.mesh(parent, new ConeGeometry(radius, height, sides), mat, position, scale, rotation);
+      const sidesLow = Math.max(8, Math.min(12, sides));
+      const geometry = this.cachedGeometry(
+        `cone:${radius.toFixed(3)}:${height.toFixed(3)}:${sidesLow}`,
+        () => new ConeGeometry(radius, height, sidesLow)
+      );
+      return this.mesh(parent, geometry, mat, position, scale, rotation);
     }
     tube(parent, mat, points, radius, position = [0, 0, 0]) {
       const curve = new CatmullRomCurve3(points.map((p) => new Vector3(...p)), false, "centripetal");
-      return this.mesh(parent, new TubeGeometry(curve, 24, radius, 10, false), mat, position);
+      const key = `tube:${radius.toFixed(3)}:${points.map((p) => p.map((v) => v.toFixed(2)).join(",")).join("|")}`;
+      const geometry = this.cachedGeometry(key, () => new TubeGeometry(curve, 12, radius, 6, false));
+      return this.mesh(parent, geometry, mat, position);
     }
     track(node) {
       return {
@@ -32461,8 +32563,17 @@ void main() {
     trackEar(node, side) {
       this.ears.push({ ...this.track(node), side });
     }
-    trackLimb(node, side, front, phase, soft, arm) {
-      this.limbs.push({ ...this.track(node), side, front, phase, soft, arm });
+    trackLimb(node, side, front, phase, soft, arm, paw) {
+      this.limbs.push({
+        ...this.track(node),
+        side,
+        front,
+        phase,
+        soft,
+        arm,
+        paw,
+        pawBaseY: paw ? paw.position.y : void 0
+      });
     }
     eye(parent, position, radius, options = {}) {
       const p = this.palette;
@@ -32881,6 +32992,27 @@ void main() {
           this.buildBubu();
           break;
       }
+      if (!this.hasTypingHands) {
+        for (const limb of this.limbs) limb.arm = false;
+        const p = this.palette;
+        const model = this.model;
+        const fur = this.material(p.fur);
+        const paw = this.material(p.paw);
+        const pad = this.material(p.blush, 0.92);
+        const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
+        for (const side of [-1, 1]) {
+          this.frontHand(model, side, {
+            x: side * 0.3,
+            y: shoulderY,
+            bodyZ: 0.62,
+            radius: 0.098,
+            fur,
+            paw,
+            pad,
+            splay: 0.1
+          });
+        }
+      }
     }
     /**
      * 圆墩短腿：胖胶囊大半埋进身体，只露一小截 + 椭圆脚掌。
@@ -32900,21 +33032,24 @@ void main() {
      * 并标记 arm —— 打字动画只驱动手，动作才看得清。
      */
     frontHand(parent, side, opts) {
+      this.hasTypingHands = true;
       const r = opts.radius;
-      const reach = opts.reach;
-      const hand = this.group(
-        parent,
-        [opts.x, opts.y, opts.bodyZ * 0.58],
-        [opts.tilt ?? -0.92, 0, side * (opts.splay ?? 0.14)]
-      );
-      this.capsule(hand, opts.fur, [0, -reach * 0.4, 0], r * 1.02, reach + r * 1.1);
       const ps = opts.pawScale ?? [r * 1.55, r * 1.16, r * 1.4];
+      const rootPos = [opts.x, opts.y, opts.bodyZ * 0.58];
+      const palmBottom = KEYCAP_TOP_WORLD_Y / SPECIES_ROOT_SCALE;
+      const palmCenterY = palmBottom + ps[1] * 0.94;
+      const dy = palmCenterY - rootPos[1];
+      const dz = PALM_TARGET_Z - rootPos[2];
+      const tilt = Math.atan2(-dz, -dy);
+      const reach = Math.hypot(dy, dz) / 0.84;
+      const hand = this.group(parent, rootPos, [tilt, 0, side * (opts.splay ?? 0.14)]);
+      this.capsule(hand, opts.fur, [0, -reach * 0.4, 0], r * 1.22, reach + r * 1.1);
       const paw = this.group(hand, [0, -reach * 0.84, 0.02]);
       this.sphere(paw, opts.paw, [0, 0, 0], ps, [0, 0, 0], 20);
       if (opts.pad) {
         this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
       }
-      this.trackLimb(hand, side, true, side * 0.5, void 0, true);
+      this.trackLimb(hand, side, true, side * 0.5, void 0, true, paw);
       return hand;
     }
     buildDog() {
@@ -33724,10 +33859,13 @@ void main() {
         this.model.traverse((object) => {
           if (!(object instanceof Mesh)) return;
           if (!object.geometry.userData.shared) geometries.add(object.geometry);
+          const addMat = (mat) => {
+            if (!mat.userData.shared) materials.add(mat);
+          };
           if (Array.isArray(object.material)) {
-            for (const mat of object.material) materials.add(mat);
+            for (const mat of object.material) addMat(mat);
           } else {
-            materials.add(object.material);
+            addMat(object.material);
           }
         });
         for (const geometry of geometries) geometry.dispose();
@@ -33748,6 +33886,7 @@ void main() {
       this.expressionGroups.clear();
       this.expressionEyes.length = 0;
       this.activeExpression = "idle";
+      this.hasTypingHands = false;
       this.typingPress.left = 0;
       this.typingPress.right = 0;
       this.typingPhase.left = 0;
@@ -37953,7 +38092,7 @@ void main() {
         premultipliedAlpha: true,
         powerPreference: "low-power"
       });
-      this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+      this.renderer.setPixelRatio(Math.min(1.35, window.devicePixelRatio || 1));
       this.renderer.setClearColor(0, 0);
       this.renderer.outputColorSpace = SRGBColorSpace;
       this.camera = new PerspectiveCamera(22, 1.35, 0.1, 100);

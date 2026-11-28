@@ -37,6 +37,10 @@ _motions/
 _redraw2d/
 _redraw3d/
 _ui_shots/
+_flat_typing/
+_species_shots/
+_video_probe/
+_update_shots/
 
 # 抖音宣传视频：工程源码入库，但渲染产物/内联素材/验收截图不入库
 宣传视频/*.mp4

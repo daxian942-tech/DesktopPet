@@ -40,6 +40,9 @@ interface LimbRef extends PartRef {
   soft?: SoftLimbRef;
   /** 真正用来敲键盘的"手"。打字动画优先驱动 arm，没有 arm 的物种才退回前腿。 */
   arm?: boolean;
+  /** 手掌节点：打字时沿手臂方向把掌压向键帽，而不是整臂乱转导致脱键。 */
+  paw?: THREE.Object3D;
+  pawBaseY?: number;
 }
 
 /** The same motion inputs the generic animation loop receives. */
@@ -107,6 +110,35 @@ const QUADRUPED_YAW: Partial<Record<NonCatSpecies, number>> = {
   capybara: 0.18,
 };
 
+/**
+ * 扁平卡通渲染基准（对标 BongoCat / Shimeji 那类桌宠：纯色块 + 深色轮廓线，
+ * 没有 PBR 高光、没有塑料渐变）。数值来自 keyboard3d.ts 实测：
+ *   boardGroup.y 0.015 + boardH 0.112 + capH 0.056 = 0.183 世界高度
+ * species root 由 syncFrom 同步 catRoot，scale 恒为 0.9。
+ */
+const KEYCAP_TOP_WORLD_Y = 0.183;
+const SPECIES_ROOT_SCALE = 0.9;
+/** 手掌落点（model 局部坐标）：落在键帽阵列中部，左右对称 */
+const PALM_TARGET_Z = 1.22;
+const PALM_TARGET_X = 0.34;
+/**
+ * 正面坐姿 / 趴姿类物种的「肩膀」高度：统一补的打字手从这里起算。
+ * 太低会从肚子下方伸出来、看着像多两条腿；抬到肩线才读得懂是手臂。
+ */
+const TYPING_HAND_SHOULDER_Y: Partial<Record<NonCatSpecies, number>> = {
+  bunny: 0.84,
+  penguin: 1.02,
+  frog: 0.54,
+  chiikawa: 0.78,
+  milkdragon: 0.80,
+  loopy: 0.82,
+  bubu: 0.82,
+};
+/** 轮廓线：只给构成剪影的大件加，避免小零件被黑圈糊住、也控制 draw call */
+const OUTLINE_MIN_SIZE = 0.30;
+const OUTLINE_WIDTH = 0.024;
+const OUTLINE_COLOR = '#332a30';
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -142,7 +174,15 @@ export class IndependentSpecies3D {
   private currentSpecies: AnimalSpecies = 'cat';
   private skinKey = '';
   private palette: Palette | null = null;
-  private readonly materials = new Map<string, THREE.MeshStandardMaterial>();
+  /** 赛璐璐材质：按颜色缓存，全物种共用，换皮肤时统一释放 */
+  private readonly materials = new Map<string, THREE.MeshToonMaterial>();
+  /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
+  private readonly geoCache = new Map<string, THREE.BufferGeometry>();
+  private readonly gradientMap: THREE.DataTexture;
+  private outlineMat: THREE.MeshBasicMaterial | null = null;
+  private groundMat: THREE.MeshBasicMaterial | null = null;
+  /** 本只动物是否已经建了伸向键盘的打字手（没有的统一补一对） */
+  private hasTypingHands = false;
 
   private body: PartRef | null = null;
   private head: PartRef | null = null;
@@ -165,11 +205,23 @@ export class IndependentSpecies3D {
     this.root.scale.setScalar(0.9);
     scene.add(this.root);
 
-    const sky = new THREE.HemisphereLight('#fff8ed', '#586272', 1.65);
+    // 三阶赛璐璐明暗：亮面 / 中间调 / 暗面。NearestFilter 才有干净的色块边界，
+    // 这正是扁平插画感的来源，也省掉了 PBR 的逐像素高光计算。
+    // 亮面为主、暗面只轻轻压一点：白色 / 浅色动物才不会被压成灰团子，
+    // 更接近 BongoCat 那种「纯色填充 + 黑线」的干净插画。
+    const steps = new Uint8Array([168, 214, 255]);
+    this.gradientMap = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
+    this.gradientMap.minFilter = THREE.NearestFilter;
+    this.gradientMap.magFilter = THREE.NearestFilter;
+    this.gradientMap.generateMipmaps = false;
+    this.gradientMap.needsUpdate = true;
+
+    // 灯光只负责提供明暗方向，不再靠强度堆出体积感（否则 toon 会全糊成最亮阶）
+    const sky = new THREE.HemisphereLight('#fff6ec', '#6d6070', 0.78);
     sky.name = 'independent-species-fill';
     scene.add(sky);
 
-    const key = new THREE.DirectionalLight('#ffffff', 2.15);
+    const key = new THREE.DirectionalLight('#ffffff', 0.92);
     key.name = 'independent-species-key';
     key.position.set(-3.2, 5.4, 4.6);
     scene.add(key);
@@ -198,6 +250,19 @@ export class IndependentSpecies3D {
     this.model.name = `independent-${species}`;
     this.model.rotation.y = QUADRUPED_YAW[species] ?? 0;
     this.root.add(this.model);
+
+    // 扁平贴纸式接地阴影（不是 3D 阴影贴图）：让 Q 版团子稳稳落在桌面上，
+    // 也把「角色 + 键盘」在视觉上连成一个场景。
+    const ground = new THREE.Mesh(
+      this.cachedGeometry('ground', () => new THREE.CircleGeometry(1, 28)),
+      this.getGroundMat(),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.scale.set(0.70, 0.40, 1);
+    ground.position.set(0, 0.005, 0.20);
+    ground.renderOrder = -2;
+    this.model.add(ground);
+
     this.buildSpecies(species);
     this.buildExpressions();
   }
@@ -336,6 +401,11 @@ export class IndependentSpecies3D {
       limb.node.scale.copy(limb.scale);
       limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.018 * awake;
       if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
+      // 手掌每帧回到基准位，打字位移才不会累积
+      if (limb.paw && limb.pawBaseY !== undefined) {
+        limb.paw.position.y = limb.pawBaseY;
+        limb.paw.scale.set(1, 1, 1);
+      }
     }
 
     for (const motion of this.customMotions) motion(time, options);
@@ -344,30 +414,22 @@ export class IndependentSpecies3D {
     // 让牛低头嚼草、狗大口啃、兔子快速啄食……每台动物都不一样。
     this.applyCareGesture(time, options.mood, options.moodAmt, awake);
 
-    // 打字：优先驱动真正的手（arm），没有手的物种退回前腿、幅度小一点。
-    // 手要有"往前探 + 抬起 + 快速落回"的行程，才看得出在敲键，而不是微微抖动。
+    // 打字只驱动「打字手」：贴身的装饰小手 / 鳍 / 蹼已经降级为静态，
+    // 不再跟着一起乱动。手精确按在键帽上，整臂只留一点蓄力回旋
+    // （旧版整臂旋转 + 整体下移会让掌飞离或穿进键盘），
+    // 真正的按键行程由掌沿手臂方向压下去 + 轻微压扁完成。
     for (const limb of this.limbs) {
-      const isHand = limb.arm === true;
-      if (!isHand && !limb.front) continue;
+      if (!limb.arm) continue;
       const isLeft = limb.side < 0;
       const tap = (isLeft ? tapLeft : tapRight) * awake;
       if (tap < 0.002) continue;
       const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-      if (isHand) {
-        // 手：按键时臂略回收把掌往前下方压（像真的按下去），松开自然回位
-        limb.node.rotation.x += 0.26 * tap;
-        limb.node.position.y -= 0.070 * tap;
-        limb.node.position.z += 0.045 * tap;
-      } else {
-        limb.node.rotation.x -= 0.28 * tap;
-        limb.node.position.y += 0.075 * tap;
-      }
-      limb.node.rotation.z += limb.side * (isHand ? 0.05 : 0.03) * tap;
-      if (limb.soft) {
-        limb.soft.elbow.rotation.x += (isHand ? 0.26 : 0.20) * tap;
-        limb.soft.elbow.rotation.z += limb.side * (isHand ? 0.06 : 0.05) * tap;
-        limb.soft.wrist.rotation.x += (isHand ? 0.19 : 0.14) * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
-        limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
+      limb.node.rotation.x += 0.075 * tap;
+      limb.node.rotation.z += limb.side * 0.022 * tap;
+      if (limb.paw && limb.pawBaseY !== undefined) {
+        const press = 0.044 * tap * (0.82 + 0.18 * Math.sin(phase + 0.4));
+        limb.paw.position.y = limb.pawBaseY - press;
+        limb.paw.scale.set(1 + 0.07 * tap, 1 - 0.14 * tap, 1 + 0.05 * tap);
       }
     }
 
@@ -407,13 +469,84 @@ export class IndependentSpecies3D {
     };
   }
 
-  private material(color: THREE.Color, roughness = 0.78): THREE.MeshStandardMaterial {
+  /**
+   * 扁平赛璐璐材质。`roughness` 不再表示镜面粗糙度（toon 没有高光），而是
+   * 借用来给眼睛 / 掌垫这类小件一点明度区分，保持原有调用点的语义不破。
+   */
+  private material(color: THREE.Color, roughness = 0.78): THREE.MeshToonMaterial {
     const key = `${color.getHexString()}:${roughness.toFixed(2)}`;
     const cached = this.materials.get(key);
     if (cached) return cached;
-    const mat = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.0 });
+    const shade = 0.90 + Math.min(1, Math.max(0, roughness)) * 0.10;
+    const mat = new THREE.MeshToonMaterial({
+      color: color.clone().multiplyScalar(shade),
+      gradientMap: this.gradientMap,
+    });
     this.materials.set(key, mat);
     return mat;
+  }
+
+  /** 共享几何：同一细分参数的球 / 胶囊只创建一次，并标记为 shared 防止被 dispose */
+  private cachedGeometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let geometry = this.geoCache.get(key);
+    if (!geometry) {
+      geometry = make();
+      geometry.userData.shared = true;
+      this.geoCache.set(key, geometry);
+    }
+    return geometry;
+  }
+
+  /** 深色轮廓材质：inverted-hull 只渲染背面，被自身正面挡住后只剩外圈一条线 */
+  private getOutlineMat(): THREE.MeshBasicMaterial {
+    if (!this.outlineMat) {
+      this.outlineMat = new THREE.MeshBasicMaterial({
+        color: OUTLINE_COLOR,
+        side: THREE.BackSide,
+      });
+      this.outlineMat.userData.shared = true;
+    }
+    return this.outlineMat;
+  }
+
+  /** 贴纸式接地阴影：一块淡色椭圆，替代 3D 阴影贴图，解决团子悬浮感 */
+  private getGroundMat(): THREE.MeshBasicMaterial {
+    if (!this.groundMat) {
+      this.groundMat = new THREE.MeshBasicMaterial({
+        color: '#4c4048',
+        transparent: true,
+        opacity: 0.13,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      this.groundMat.userData.shared = true;
+    }
+    return this.groundMat;
+  }
+
+  /**
+   * 给构成剪影的大件加一圈深色轮廓线。小零件（眼睛、腮红、掌垫）不加，
+   * 否则会出现一堆黑圈、把表情糊掉，也让 draw call 白白翻倍。
+   */
+  private addOutline(
+    parent: THREE.Object3D,
+    geometry: THREE.BufferGeometry,
+    position: Vec3,
+    scale: Vec3,
+    rotation: Vec3,
+  ): void {
+    const size = Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]));
+    if (size < OUTLINE_MIN_SIZE) return;
+    const outline = new THREE.Mesh(geometry, this.getOutlineMat());
+    outline.position.set(...position);
+    outline.rotation.set(...rotation);
+    outline.scale.set(
+      scale[0] + OUTLINE_WIDTH,
+      scale[1] + OUTLINE_WIDTH,
+      scale[2] + OUTLINE_WIDTH,
+    );
+    outline.renderOrder = -1;
+    parent.add(outline);
   }
 
   private group(parent: THREE.Object3D, position: Vec3 = [0, 0, 0], rotation: Vec3 = [0, 0, 0]): THREE.Group {
@@ -436,8 +569,7 @@ export class IndependentSpecies3D {
     mesh.position.set(...position);
     mesh.scale.set(...scale);
     mesh.rotation.set(...rotation);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    // 桌宠窗口没有开 shadowMap，这两个标记本来就不产生效果，去掉减少无谓开销
     parent.add(mesh);
     return mesh;
   }
@@ -450,13 +582,17 @@ export class IndependentSpecies3D {
     rotation: Vec3 = [0, 0, 0],
     detail = 24,
   ): THREE.Mesh {
-    // Large body/head shells (default detail) use Blender's uniform icosphere:
-    // even topology, smooth highlights, no UV pole pinching. Small parts keep
-    // the cheap Three.js sphere so the vertex budget stays flat.
-    const geometry = detail >= 22
-      ? blenderGeometry('sphere')
-      : new THREE.SphereGeometry(1, detail, Math.max(12, detail * 0.667));
-    return this.mesh(parent, geometry, mat, position, scale, rotation);
+    // 扁平赛璐璐不需要 1280 三角的均匀球：低面数 + 色块明暗反而更像插画。
+    // 几何按细分参数缓存共享，12 只动物不再各自重复上传顶点数据。
+    const seg = Math.max(8, Math.round(detail * 0.62));
+    const rings = Math.max(6, Math.round(seg * 0.68));
+    const geometry = this.cachedGeometry(
+      `sphere:${seg}:${rings}`,
+      () => new THREE.SphereGeometry(1, seg, rings),
+    );
+    const mesh = this.mesh(parent, geometry, mat, position, scale, rotation);
+    this.addOutline(parent, geometry, position, scale, rotation);
+    return mesh;
   }
 
   /**
@@ -509,7 +645,11 @@ export class IndependentSpecies3D {
     scale: Vec3,
     rotation: Vec3 = [0, 0, 0],
   ): THREE.Mesh {
-    return this.mesh(parent, new THREE.BoxGeometry(1, 1, 1, 2, 2, 2), mat, position, scale, rotation);
+    return this.mesh(
+      parent,
+      this.cachedGeometry('box', () => new THREE.BoxGeometry(1, 1, 1, 1, 1, 1)),
+      mat, position, scale, rotation,
+    );
   }
 
   private capsule(
@@ -521,7 +661,11 @@ export class IndependentSpecies3D {
     scale: Vec3 = [1, 1, 1],
     rotation: Vec3 = [0, 0, 0],
   ): THREE.Mesh {
-    const geometry = new THREE.CapsuleGeometry(radius, Math.max(0.01, length - radius * 2), 6, 14);
+    const shaft = Math.max(0.01, length - radius * 2);
+    const geometry = this.cachedGeometry(
+      `capsule:${radius.toFixed(3)}:${shaft.toFixed(3)}`,
+      () => new THREE.CapsuleGeometry(radius, shaft, 4, 10),
+    );
     return this.mesh(parent, geometry, mat, position, scale, rotation);
   }
 
@@ -535,7 +679,12 @@ export class IndependentSpecies3D {
     rotation: Vec3 = [0, 0, 0],
     sides = 20,
   ): THREE.Mesh {
-    return this.mesh(parent, new THREE.ConeGeometry(radius, height, sides), mat, position, scale, rotation);
+    const sidesLow = Math.max(8, Math.min(12, sides));
+    const geometry = this.cachedGeometry(
+      `cone:${radius.toFixed(3)}:${height.toFixed(3)}:${sidesLow}`,
+      () => new THREE.ConeGeometry(radius, height, sidesLow),
+    );
+    return this.mesh(parent, geometry, mat, position, scale, rotation);
   }
 
   private tube(
@@ -546,7 +695,9 @@ export class IndependentSpecies3D {
     position: Vec3 = [0, 0, 0],
   ): THREE.Mesh {
     const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)), false, 'centripetal');
-    return this.mesh(parent, new THREE.TubeGeometry(curve, 24, radius, 10, false), mat, position);
+    const key = `tube:${radius.toFixed(3)}:${points.map((p) => p.map((v) => v.toFixed(2)).join(',')).join('|')}`;
+    const geometry = this.cachedGeometry(key, () => new THREE.TubeGeometry(curve, 12, radius, 6, false));
+    return this.mesh(parent, geometry, mat, position);
   }
 
   private track(node: THREE.Object3D): PartRef {
@@ -581,8 +732,12 @@ export class IndependentSpecies3D {
     phase: number,
     soft?: SoftLimbRef,
     arm?: boolean,
+    paw?: THREE.Object3D,
   ): void {
-    this.limbs.push({ ...this.track(node), side, front, phase, soft, arm });
+    this.limbs.push({
+      ...this.track(node), side, front, phase, soft, arm, paw,
+      pawBaseY: paw ? paw.position.y : undefined,
+    });
   }
 
   private eye(
@@ -1087,6 +1242,33 @@ export class IndependentSpecies3D {
       case 'loopy': this.buildLoopy(); break;
       case 'bubu': this.buildBubu(); break;
     }
+
+    // 统一补齐打字手：四足类在各自 build 里已经用 frontHand 建了手；
+    // 正面坐姿 / 趴姿类（兔子、企鹅、青蛙、吉伊卡哇、奶龙、露比、布布）
+    // 原来只有贴身的小手 / 鳍 / 蹼，敲键盘时根本够不到键盘。
+    // 这里把它们降级为静态装饰，再补一对伸向键帽的手，
+    // 保证 12 只动物打字时手都实实在在按在键盘上。
+    if (!this.hasTypingHands) {
+      for (const limb of this.limbs) limb.arm = false;
+      const p = this.palette!;
+      const model = this.model!;
+      const fur = this.material(p.fur);
+      const paw = this.material(p.paw);
+      const pad = this.material(p.blush, 0.92);
+      const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
+      for (const side of [-1, 1] as const) {
+        this.frontHand(model, side, {
+          x: side * 0.30,
+          y: shoulderY,
+          bodyZ: 0.62,
+          radius: 0.098,
+          fur,
+          paw,
+          pad,
+          splay: 0.10,
+        });
+      }
+    }
   }
 
   /**
@@ -1126,11 +1308,11 @@ export class IndependentSpecies3D {
       x: number;
       /** 臂根高度，落在身体中部偏下 */
       y: number;
-      /** 身体前缘的 z 半径：圆掌必须伸到这个值之外，否则会被身体吞掉 */
+      /** 身体前缘的 z 半径：臂根从这里起算 */
       bodyZ: number;
       radius: number;
-      /** 手臂总长，决定掌往身体前下方探出多远 */
-      reach: number;
+      /** @deprecated 现在由键帽落点自动反算，保留仅为兼容旧调用点 */
+      reach?: number;
       fur: THREE.Material;
       paw: THREE.Material;
       /** 对比色掌垫：手和身体同色时全靠它把"手"读出来 */
@@ -1138,30 +1320,37 @@ export class IndependentSpecies3D {
       pawScale?: Vec3;
       /** 手往外撇的角度，让两只手呈八字形，不贴着身体。 */
       splay?: number;
-      /** 手臂前倾角：约 -0.92 是斜着垂在前下方，-1.3 接近水平、能伸到键盘上 */
+      /** @deprecated 现在由键帽落点自动反算 */
       tilt?: number;
     },
   ): THREE.Group {
+    this.hasTypingHands = true;
     const r = opts.radius;
-    const reach = opts.reach;
-    // 臂根埋在身体内部前半段，默认前倾约 53°，从身体前下方伸出来
-    const hand = this.group(
-      parent,
-      [opts.x, opts.y, opts.bodyZ * 0.58],
-      [opts.tilt ?? -0.92, 0, side * (opts.splay ?? 0.14)],
-    );
-    // 短粗圆臂：比原来更粗，Q 版才有"肉感"
-    this.capsule(hand, opts.fur, [0, -reach * 0.40, 0], r * 1.02, reach + r * 1.1);
-    // 大圆掌：压扁成卡通饼状，比原来大一圈
     const ps = opts.pawScale ?? [r * 1.55, r * 1.16, r * 1.40];
+    const rootPos: Vec3 = [opts.x, opts.y, opts.bodyZ * 0.58];
+
+    // 核心：不再让每只动物各写一个「大概朝前」的 tilt/reach，而是按实测的
+    // 键帽顶面高度反解。掌球下缘 = 键帽顶面，掌心落在键盘中部，
+    // 因此 12 只动物的手都精确按在键帽上，打字时不会悬空也不会穿进键盘。
+    const palmBottom = KEYCAP_TOP_WORLD_Y / SPECIES_ROOT_SCALE;
+    const palmCenterY = palmBottom + ps[1] * 0.94;
+    const dy = palmCenterY - rootPos[1];
+    const dz = PALM_TARGET_Z - rootPos[2];
+    // 手臂局部 -Y 轴经 rotX(tilt) 后为 (0, -cosθ, -sinθ)，令其与 (dy, dz) 同向：
+    const tilt = Math.atan2(-dz, -dy);
+    const reach = Math.hypot(dy, dz) / 0.84;
+
+    const hand = this.group(parent, rootPos, [tilt, 0, side * (opts.splay ?? 0.14)]);
+    // 短粗圆臂：Q 版肉感
+    this.capsule(hand, opts.fur, [0, -reach * 0.40, 0], r * 1.22, reach + r * 1.1);
+    // 大圆掌：压扁成卡通饼状
     const paw = this.group(hand, [0, -reach * 0.84, 0.02]);
     this.sphere(paw, opts.paw, [0, 0, 0], ps, [0, 0, 0], 20);
-    // 掌垫：对比色扁椭圆，贴在手心朝前的一面 —— 深色身体上的黑手也能一眼看出是手
+    // 掌垫：对比色扁椭圆，贴在手心朝前的一面
     if (opts.pad) {
-      // z 必须接近掌球的半径（ps[2]），否则会被球体整个包住看不见
       this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
     }
-    this.trackLimb(hand, side, true, side * 0.5, undefined, true);
+    this.trackLimb(hand, side, true, side * 0.5, undefined, true, paw);
     return hand;
   }
 
@@ -2022,10 +2211,14 @@ export class IndependentSpecies3D {
         if (!(object instanceof THREE.Mesh)) return;
         // Blender prototypes are shared across skins; keep them alive.
         if (!object.geometry.userData.shared) geometries.add(object.geometry);
+        const addMat = (mat: THREE.Material) => {
+          // 轮廓材质是全局共享的，换皮肤时不能 dispose
+          if (!mat.userData.shared) materials.add(mat);
+        };
         if (Array.isArray(object.material)) {
-          for (const mat of object.material) materials.add(mat);
+          for (const mat of object.material) addMat(mat);
         } else {
-          materials.add(object.material);
+          addMat(object.material);
         }
       });
       for (const geometry of geometries) geometry.dispose();
@@ -2046,6 +2239,7 @@ export class IndependentSpecies3D {
     this.expressionGroups.clear();
     this.expressionEyes.length = 0;
     this.activeExpression = 'idle';
+    this.hasTypingHands = false;
     this.typingPress.left = 0;
     this.typingPress.right = 0;
     this.typingPhase.left = 0;
