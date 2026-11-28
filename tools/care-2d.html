@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>DesktopPet 2D 真实引擎 · 照顾场景验收</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f4f1eb; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <canvas id="pet"></canvas>
+  <script src="./care-2d.js"></script>
+  <script>
+    // ?mood=<eat|drink|play|bath>&t=<seconds> 用于无头截图定格照顾场景
+    (function () {
+      var qs = new URLSearchParams(location.search);
+      var mood = qs.get('mood');
+      var t = qs.get('t');
+      if (!mood) return;
+      function seek() {
+        if (!window.careEngine) { setTimeout(seek, 40); return; }
+        if (t !== null) window.careEngine.elapsed = parseFloat(t);
+        window.careEngine.triggerCareMood(mood, 60);
+        if (t !== null) {
+          // 等 4 帧再冻结：无头 Chrome 偶发首帧还没画完就截图会得到空白
+          var frames = 0;
+          function settle() {
+            frames++;
+            if (frames < 4) requestAnimationFrame(settle);
+            else window.careEngine.stop();
+          }
+          requestAnimationFrame(settle);
+        }
+      }
+      seek();
+    })();
+  </script>
+</body>
+</html>

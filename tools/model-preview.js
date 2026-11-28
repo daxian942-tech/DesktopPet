@@ -14172,6 +14172,180 @@
       return new _ConeGeometry(data.radius, data.height, data.radialSegments, data.heightSegments, data.openEnded, data.thetaStart, data.thetaLength);
     }
   };
+  var PolyhedronGeometry = class _PolyhedronGeometry extends BufferGeometry {
+    /**
+     * Constructs a new polyhedron geometry.
+     *
+     * @param {Array<number>} [vertices] - A flat array of vertices describing the base shape.
+     * @param {Array<number>} [indices] - A flat array of indices describing the base shape.
+     * @param {number} [radius=1] - The radius of the shape.
+     * @param {number} [detail=0] - How many levels to subdivide the geometry. The more detail, the smoother the shape.
+     */
+    constructor(vertices = [], indices = [], radius = 1, detail = 0) {
+      super();
+      this.type = "PolyhedronGeometry";
+      this.parameters = {
+        vertices,
+        indices,
+        radius,
+        detail
+      };
+      const vertexBuffer = [];
+      const uvBuffer = [];
+      subdivide(detail);
+      applyRadius(radius);
+      generateUVs();
+      this.setAttribute("position", new Float32BufferAttribute(vertexBuffer, 3));
+      this.setAttribute("normal", new Float32BufferAttribute(vertexBuffer.slice(), 3));
+      this.setAttribute("uv", new Float32BufferAttribute(uvBuffer, 2));
+      if (detail === 0) {
+        this.computeVertexNormals();
+      } else {
+        this.normalizeNormals();
+      }
+      function subdivide(detail2) {
+        const a = new Vector3();
+        const b = new Vector3();
+        const c = new Vector3();
+        for (let i = 0; i < indices.length; i += 3) {
+          getVertexByIndex(indices[i + 0], a);
+          getVertexByIndex(indices[i + 1], b);
+          getVertexByIndex(indices[i + 2], c);
+          subdivideFace(a, b, c, detail2);
+        }
+      }
+      function subdivideFace(a, b, c, detail2) {
+        const cols = detail2 + 1;
+        const v = [];
+        for (let i = 0; i <= cols; i++) {
+          v[i] = [];
+          const aj = a.clone().lerp(c, i / cols);
+          const bj = b.clone().lerp(c, i / cols);
+          const rows = cols - i;
+          for (let j = 0; j <= rows; j++) {
+            if (j === 0 && i === cols) {
+              v[i][j] = aj;
+            } else {
+              v[i][j] = aj.clone().lerp(bj, j / rows);
+            }
+          }
+        }
+        for (let i = 0; i < cols; i++) {
+          for (let j = 0; j < 2 * (cols - i) - 1; j++) {
+            const k = Math.floor(j / 2);
+            if (j % 2 === 0) {
+              pushVertex(v[i][k + 1]);
+              pushVertex(v[i + 1][k]);
+              pushVertex(v[i][k]);
+            } else {
+              pushVertex(v[i][k + 1]);
+              pushVertex(v[i + 1][k + 1]);
+              pushVertex(v[i + 1][k]);
+            }
+          }
+        }
+      }
+      function applyRadius(radius2) {
+        const vertex2 = new Vector3();
+        for (let i = 0; i < vertexBuffer.length; i += 3) {
+          vertex2.x = vertexBuffer[i + 0];
+          vertex2.y = vertexBuffer[i + 1];
+          vertex2.z = vertexBuffer[i + 2];
+          vertex2.normalize().multiplyScalar(radius2);
+          vertexBuffer[i + 0] = vertex2.x;
+          vertexBuffer[i + 1] = vertex2.y;
+          vertexBuffer[i + 2] = vertex2.z;
+        }
+      }
+      function generateUVs() {
+        const vertex2 = new Vector3();
+        for (let i = 0; i < vertexBuffer.length; i += 3) {
+          vertex2.x = vertexBuffer[i + 0];
+          vertex2.y = vertexBuffer[i + 1];
+          vertex2.z = vertexBuffer[i + 2];
+          const u = azimuth(vertex2) / 2 / Math.PI + 0.5;
+          const v = inclination(vertex2) / Math.PI + 0.5;
+          uvBuffer.push(u, 1 - v);
+        }
+        correctUVs();
+        correctSeam();
+      }
+      function correctSeam() {
+        for (let i = 0; i < uvBuffer.length; i += 6) {
+          const x0 = uvBuffer[i + 0];
+          const x1 = uvBuffer[i + 2];
+          const x2 = uvBuffer[i + 4];
+          const max = Math.max(x0, x1, x2);
+          const min = Math.min(x0, x1, x2);
+          if (max > 0.9 && min < 0.1) {
+            if (x0 < 0.2) uvBuffer[i + 0] += 1;
+            if (x1 < 0.2) uvBuffer[i + 2] += 1;
+            if (x2 < 0.2) uvBuffer[i + 4] += 1;
+          }
+        }
+      }
+      function pushVertex(vertex2) {
+        vertexBuffer.push(vertex2.x, vertex2.y, vertex2.z);
+      }
+      function getVertexByIndex(index, vertex2) {
+        const stride = index * 3;
+        vertex2.x = vertices[stride + 0];
+        vertex2.y = vertices[stride + 1];
+        vertex2.z = vertices[stride + 2];
+      }
+      function correctUVs() {
+        const a = new Vector3();
+        const b = new Vector3();
+        const c = new Vector3();
+        const centroid = new Vector3();
+        const uvA = new Vector2();
+        const uvB = new Vector2();
+        const uvC = new Vector2();
+        for (let i = 0, j = 0; i < vertexBuffer.length; i += 9, j += 6) {
+          a.set(vertexBuffer[i + 0], vertexBuffer[i + 1], vertexBuffer[i + 2]);
+          b.set(vertexBuffer[i + 3], vertexBuffer[i + 4], vertexBuffer[i + 5]);
+          c.set(vertexBuffer[i + 6], vertexBuffer[i + 7], vertexBuffer[i + 8]);
+          uvA.set(uvBuffer[j + 0], uvBuffer[j + 1]);
+          uvB.set(uvBuffer[j + 2], uvBuffer[j + 3]);
+          uvC.set(uvBuffer[j + 4], uvBuffer[j + 5]);
+          centroid.copy(a).add(b).add(c).divideScalar(3);
+          const azi = azimuth(centroid);
+          correctUV(uvA, j + 0, a, azi);
+          correctUV(uvB, j + 2, b, azi);
+          correctUV(uvC, j + 4, c, azi);
+        }
+      }
+      function correctUV(uv, stride, vector, azimuth2) {
+        if (azimuth2 < 0 && uv.x === 1) {
+          uvBuffer[stride] = uv.x - 1;
+        }
+        if (vector.x === 0 && vector.z === 0) {
+          uvBuffer[stride] = azimuth2 / 2 / Math.PI + 0.5;
+        }
+      }
+      function azimuth(vector) {
+        return Math.atan2(vector.z, -vector.x);
+      }
+      function inclination(vector) {
+        return Math.atan2(-vector.y, Math.sqrt(vector.x * vector.x + vector.z * vector.z));
+      }
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @return {PolyhedronGeometry} A new instance.
+     */
+    static fromJSON(data) {
+      return new _PolyhedronGeometry(data.vertices, data.indices, data.radius, data.detail);
+    }
+  };
   var Curve = class {
     /**
      * Constructs a new curve.
@@ -16676,6 +16850,78 @@
      */
     static fromJSON(data) {
       return new _LatheGeometry(data.points, data.segments, data.phiStart, data.phiLength);
+    }
+  };
+  var OctahedronGeometry = class _OctahedronGeometry extends PolyhedronGeometry {
+    /**
+     * Constructs a new octahedron geometry.
+     *
+     * @param {number} [radius=1] - Radius of the octahedron.
+     * @param {number} [detail=0] - Setting this to a value greater than `0` adds vertices making it no longer a octahedron.
+     */
+    constructor(radius = 1, detail = 0) {
+      const vertices = [
+        1,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        -1
+      ];
+      const indices = [
+        0,
+        2,
+        4,
+        0,
+        4,
+        3,
+        0,
+        3,
+        5,
+        0,
+        5,
+        2,
+        1,
+        2,
+        5,
+        1,
+        5,
+        3,
+        1,
+        3,
+        4,
+        1,
+        4,
+        2
+      ];
+      super(vertices, indices, radius, detail);
+      this.type = "OctahedronGeometry";
+      this.parameters = {
+        radius,
+        detail
+      };
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @return {OctahedronGeometry} A new instance.
+     */
+    static fromJSON(data) {
+      return new _OctahedronGeometry(data.radius, data.detail);
     }
   };
   var PlaneGeometry = class _PlaneGeometry extends BufferGeometry {
@@ -33912,6 +34158,214 @@ void main() {
     }
   };
 
+  // src/careScene.ts
+  var TAU = Math.PI * 2;
+  var clamp012 = (v) => Math.max(0, Math.min(1, v));
+  function createCareScene3D(scene) {
+    const root = new Group();
+    root.name = "care-scene-root";
+    root.visible = false;
+    scene.add(root);
+    const mats = [];
+    const geos = [];
+    const mat = (color, opacity = 1) => {
+      const m = new MeshBasicMaterial({
+        color,
+        transparent: opacity < 1,
+        opacity,
+        depthWrite: opacity >= 1,
+        side: FrontSide
+      });
+      mats.push(m);
+      return m;
+    };
+    const geo = (g) => {
+      geos.push(g);
+      return g;
+    };
+    const mesh = (parent, g, m, pos) => {
+      const o = new Mesh(g, m);
+      o.position.set(pos[0], pos[1], pos[2]);
+      parent.add(o);
+      return o;
+    };
+    const makeBowl = (isDrink) => {
+      const g = new Group();
+      const shell = isDrink ? 7190237 : 15114588;
+      const shellEdge = isDrink ? 5149629 : 12876860;
+      const inner = isDrink ? 11132147 : 16176804;
+      const outer = mesh(g, geo(new CylinderGeometry(0.63, 0.41, 0.27, 28)), mat(shellEdge), [0, 0.135, 0]);
+      outer.name = "bowl-outer";
+      mesh(g, geo(new CylinderGeometry(0.595, 0.385, 0.255, 28)), mat(shell), [0, 0.137, 0]);
+      mesh(g, geo(new CylinderGeometry(0.565, 0.565, 0.022, 28)), mat(inner), [0, 0.272, 0]);
+      const rim = mesh(g, geo(new TorusGeometry(0.6, 0.032, 8, 30)), mat(shellEdge), [0, 0.278, 0]);
+      rim.rotation.x = Math.PI / 2;
+      if (isDrink) {
+        mesh(g, geo(new CylinderGeometry(0.55, 0.55, 0.012, 28)), mat(9425650), [0, 0.288, 0]);
+        for (let i = 0; i < 2; i++) {
+          const ring = mesh(g, geo(new TorusGeometry(0.2 + i * 0.14, 0.014, 6, 28)), mat(14677247, 0.82), [0, 0.297, 0]);
+          ring.rotation.x = Math.PI / 2;
+        }
+      } else {
+        const bits = [
+          [-0.25, 0.31, 0.02, 0.11, 13201471],
+          [0.02, 0.32, -0.04, 0.12, 15316323],
+          [0.26, 0.31, 0.05, 0.105, 12149048],
+          [-0.08, 0.34, -0.18, 0.085, 15780231],
+          [0.14, 0.335, 0.2, 0.08, 14256970]
+        ];
+        for (const [x, y, z, r, c] of bits) {
+          mesh(g, geo(new SphereGeometry(r, 10, 8)), mat(c), [x, y, z]);
+        }
+        const leaf = mesh(g, geo(new SphereGeometry(0.1, 10, 8)), mat(8369507), [0.38, 0.3, -0.06]);
+        leaf.scale.set(1, 0.32, 0.62);
+      }
+      g.position.set(-0.88, 0.012, 0.46);
+      g.userData.baseScale = 0.82;
+      root.add(g);
+      return g;
+    };
+    const eatBowl = makeBowl(false);
+    const drinkBowl = makeBowl(true);
+    const playGroup = new Group();
+    const playBalls = [];
+    const ballColors = [15893375, 9422824];
+    for (let i = 0; i < 2; i++) {
+      const b = mesh(playGroup, geo(new SphereGeometry(i === 0 ? 0.17 : 0.13, 16, 12)), mat(ballColors[i]), [
+        -0.75 + i * 1.5,
+        0.18,
+        0.55
+      ]);
+      playBalls.push({ mesh: b, baseY: 0.18, phase: i * 0.5, kind: "ball", baseX: b.position.x, baseZ: 0.55 });
+    }
+    for (let i = 0; i < 4; i++) {
+      const st = mesh(playGroup, geo(new OctahedronGeometry(0.075, 0)), mat(16769674), [
+        Math.sin(i * 2.4) * 0.85,
+        0.7 + i * 0.22,
+        0.42
+      ]);
+      st.name = "play-star";
+    }
+    root.add(playGroup);
+    const bathGroup = new Group();
+    const puddle = mesh(
+      bathGroup,
+      geo(new CircleGeometry(0.86, 32)),
+      mat(9425136, 0.55),
+      [0, 0.01, 0.34]
+    );
+    puddle.rotation.x = -Math.PI / 2;
+    puddle.scale.set(1, 0.3, 1);
+    const waterBits = [];
+    for (let i = 0; i < 12; i++) {
+      const d = mesh(
+        bathGroup,
+        geo(new SphereGeometry(0.062, 10, 8)),
+        mat(i % 3 === 0 ? 12576511 : 7980012, 0.88),
+        [Math.sin(i * 2.31) * 0.82, 0.4, 0.32 + i % 4 * 0.11]
+      );
+      d.scale.set(0.72, 1.5, 0.72);
+      d.material.userData.dynamicOpacity = true;
+      waterBits.push({ mesh: d, baseY: 0.4, phase: i * 0.113, kind: "drop", baseX: d.position.x, baseZ: d.position.z });
+    }
+    for (let i = 0; i < 7; i++) {
+      const b = mesh(
+        bathGroup,
+        geo(new SphereGeometry(0.095 + i % 3 * 0.025, 14, 10)),
+        mat(15268095, 0.78),
+        [Math.sin(i * 1.83) * 0.72, 0.3, 0.36 + i % 3 * 0.1]
+      );
+      b.material.userData.dynamicOpacity = true;
+      waterBits.push({ mesh: b, baseY: 0.3, phase: i * 0.19, kind: "bubble", baseX: b.position.x, baseZ: b.position.z });
+    }
+    root.add(bathGroup);
+    const groups = [eatBowl, drinkBowl, playGroup, bathGroup];
+    const setOpacity = (g, a) => {
+      g.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        const m = o.material;
+        if (!m || !m.transparent || m.userData.dynamicOpacity) return;
+        m.opacity = (m.userData.baseOpacity ?? m.opacity) * a;
+      });
+    };
+    for (const m of mats) {
+      const mm = m;
+      mm.userData.baseOpacity = mm.opacity;
+    }
+    return {
+      update(t, mood, amt, rootPos) {
+        const a = clamp012(amt);
+        root.position.copy(rootPos);
+        if (a < 0.012 || mood !== "eat" && mood !== "drink" && mood !== "play" && mood !== "bath") {
+          root.visible = false;
+          return;
+        }
+        root.visible = true;
+        const isEat = mood === "eat";
+        const isDrink = mood === "drink";
+        const isPlay = mood === "play";
+        const isBath = mood === "bath";
+        eatBowl.visible = isEat;
+        drinkBowl.visible = isDrink;
+        playGroup.visible = isPlay;
+        bathGroup.visible = isBath;
+        const rise = (1 - a) * 0.32;
+        for (const g of groups) {
+          g.position.y = 0.012 - rise;
+          const sc = 0.86 + 0.14 * a;
+          g.scale.setScalar((g.userData.baseScale ?? 1) * sc);
+        }
+        if (isEat || isDrink) {
+          const g = isEat ? eatBowl : drinkBowl;
+          g.children.forEach((c, i) => {
+            if (c.name === "bowl-outer") return;
+            const w = Math.sin(t * 6 + i * 0.8) * 0.012;
+            c.position.y = (c.userData.baseY ??= c.position.y) + w;
+          });
+        }
+        if (isPlay) {
+          for (const b of playBalls) {
+            const ph = (t * 1.45 + b.phase) % 1;
+            b.mesh.position.y = b.baseY + Math.abs(Math.sin(ph * Math.PI)) * 0.46;
+            b.mesh.position.x = (b.baseX ?? 0) + Math.sin(t * 2.1 + b.phase * 4) * 0.1;
+          }
+          playGroup.children.forEach((c, i) => {
+            if (c.name === "play-star") {
+              c.rotation.y = t * 1.6 + i;
+              c.position.y = 0.7 + i * 0.22 + Math.sin(t * 2.4 + i) * 0.06;
+            }
+          });
+        }
+        if (isBath) {
+          puddle.scale.set(1 + Math.sin(t * 3.1) * 0.035, 0.3, 1 + Math.cos(t * 2.7) * 0.035);
+          for (const b of waterBits) {
+            const ph = (t * (b.kind === "drop" ? 0.95 : 0.52) + b.phase) % 1;
+            if (b.kind === "drop") {
+              b.mesh.position.y = 1.62 - ph * 1.55;
+              b.mesh.position.x = (b.baseX ?? 0) + Math.sin(t * 0.7 + b.phase * 20) * 0.06;
+            } else {
+              b.mesh.position.y = 0.14 + ph * 1.35;
+              b.mesh.position.x = (b.baseX ?? 0) + Math.sin(t * 1.15 + b.phase * 18) * 0.09;
+            }
+            const m = b.mesh.material;
+            const base = m.userData.baseOpacity ?? 0.8;
+            m.opacity = base * Math.min(1, a * 1.4) * (1 - Math.abs(ph - 0.5) * 0.85);
+          }
+          setOpacity(bathGroup, Math.min(1, a * 1.4));
+        }
+        if (isEat || isDrink || isPlay) {
+          const g = isEat ? eatBowl : isDrink ? drinkBowl : playGroup;
+          setOpacity(g, Math.min(1, a * 1.4));
+        }
+      },
+      dispose() {
+        scene.remove(root);
+        for (const g of geos) g.dispose();
+        for (const m of mats) m.dispose();
+      }
+    };
+  }
+
   // src/keyboardLayout.ts
   function normalizeKeyboardTheme(raw) {
     return raw === "mist" || raw === "clay" ? raw : "oat";
@@ -38622,6 +39076,8 @@ void main() {
     petting = false;
     careMood = "idle";
     careMoodUntil = -100;
+    /** 照顾场景道具（碗 / 水碗 / 球 / 洗澡水），挂在 scene 上，猫和非猫共用。 */
+    careScene;
     petUntil = -100;
     petX = 0;
     rub = 0;
@@ -38734,6 +39190,7 @@ void main() {
       this.catRoot.position.copy(this.homePos);
       this.catRoot.scale.setScalar(0.9);
       this.scene.add(this.catRoot);
+      this.careScene = createCareScene3D(this.scene);
       this.speciesModels = new IndependentSpecies3D(this.scene);
       this.catShadow = new Mesh(
         new PlaneGeometry(2.15, 1.75),
@@ -42091,6 +42548,7 @@ void main() {
         mood: careAmt > 0 ? this.careMood : "idle",
         moodAmt: careAmt
       });
+      this.careScene.update(t, careAmt > 0 ? this.careMood : "idle", careAmt, this.catRoot.position);
     }
   };
 

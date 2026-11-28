@@ -519,12 +519,12 @@ function performPetCareAction(action: PetCareAction): void {
   const res = applyPetCareAction(action);
   if (res.effective) companion.recordInteraction(action);
   updatePetCareUI(res.state);
-  if (isIndependentSpecies(engine.customSkin)) {
-    const mood = PET_CARE_MOODS[action];
-    const duration = res.effective ? 2.2 : 1.0;
-    engine.triggerCareMood(mood, duration);
-    engine3d?.triggerCareMood(mood, duration);
-  }
+  // 猫和非猫都触发同一套照顾情绪：非猫由物种绘制器表达，
+  // 猫由引擎层的碗 / 水场景表达，四个动作都有可见反馈。
+  const mood = PET_CARE_MOODS[action];
+  const duration = res.effective ? 2.2 : 1.0;
+  engine.triggerCareMood(mood, duration);
+  engine3d?.triggerCareMood(mood, duration);
   // 每个物种有自己的叫声和吃相动作；声音只在设置开启时响。
   if (settings.soundEnabled !== false && res.effective) {
     const species = engine.customSkin?.species ?? 'cat';

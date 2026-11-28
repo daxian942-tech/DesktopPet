@@ -11,6 +11,7 @@ import { catAudio } from './audio';
 import { resolveCustomSkin, resolveSpecies, defaultMuzzleLength, type CatSkinConfig, type ResolvedSkin } from './catSkins';
 import { DaFeiYuRenderer, type DaFeiYuLayout } from './dafeiyuRenderer';
 import { isIndependentSpecies, renderSpecies2d, type PetMood } from './speciesRenderer2d';
+import { drawCareScene2D } from './careScene';
 
 export const LOGICAL_W = 420;
 export const LOGICAL_H = 440;
@@ -3539,6 +3540,11 @@ export class KuroCatEngine {
 
     const breath = Math.sin(this.breathPhase) * (1.0 + this.sleepAmount * 0.65);
     const purrShift = this.squintAmount > 0.4 ? Math.sin(this.elapsed * 22) * 0.45 * this.squintAmount : 0;
+    // 照顾情绪包络：猫 / 非猫 / 大肥鱼皮肤共用，驱动脚边的碗与水场景
+    const careAmt = this.careMoodUntil > this.elapsed
+      ? Math.min(1, (this.careMoodUntil - this.elapsed) / 0.5)
+      : 0;
+    const careMood = careAmt > 0 ? this.careMood : 'idle';
 
     if (this.catBreed === 'dafeiyu') {
       const now = performance.now();
@@ -3602,6 +3608,15 @@ export class KuroCatEngine {
         this.drawKeyBubbles(ctx);
         this.drawMouseBadges(ctx);
       }
+      // 大肥鱼皮肤同样共享照顾场景
+      drawCareScene2D(ctx, {
+        cx: this.catCenterX,
+        cy: this.catBaseY + 8,
+        s: this.logicalW / LOGICAL_W,
+        time: this.elapsed,
+        mood: careMood,
+        amt: careAmt,
+      });
       ctx.restore();
       return;
     }
@@ -3629,10 +3644,6 @@ export class KuroCatEngine {
         ctx.rotate(rot);
         ctx.translate(-pivotX, -pivotY);
       }
-      const careAmt =
-        this.careMoodUntil > this.elapsed
-          ? Math.min(1, (this.careMoodUntil - this.elapsed) / 0.5)
-          : 0;
       renderSpecies2d(ctx, {
         skin: this.customSkin,
         w: this.logicalW,
@@ -3642,7 +3653,7 @@ export class KuroCatEngine {
         blink: this.blinkProgress,
         sleep: this.sleepAmount,
         squint: this.squintAmount,
-        mood: careAmt > 0 ? this.careMood : 'idle',
+        mood: careMood,
         moodAmt: careAmt,
         typing: this.typingEnergy,
       });
@@ -3681,6 +3692,15 @@ export class KuroCatEngine {
 
     // Layer 4.5: Alive cat comic FX (anger 💢 mark, tail-slam starburst & dust puffs, sleepy Zzz, chin hearts, groom sparkles)
     this.drawCatAliveFx(ctx, performance.now(), breath);
+    // 照顾场景道具：猫咪喂食有碗、洗澡有水（与其他动物完全一致）
+    drawCareScene2D(ctx, {
+      cx: this.catCenterX,
+      cy: this.catBaseY + 8,
+      s: this.logicalW / LOGICAL_W,
+      time: this.elapsed,
+      mood: careMood,
+      amt: careAmt,
+    });
     ctx.restore();
 
     // Layer 4.8: Screen-edge-aligned 2D gripping paws hugging flush around the vertical left/right screen border!

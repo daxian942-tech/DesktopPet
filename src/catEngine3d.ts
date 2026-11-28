@@ -8,6 +8,7 @@ import {
   type CatSkinConfig,
 } from './catSkins';
 import { IndependentSpecies3D } from './speciesModel3d';
+import { createCareScene3D, type CareScene3DHandle } from './careScene';
 import type { PetMood } from './speciesRenderer2d';
 import type { KeyboardLayoutId, KeyboardThemeId } from './keyboardLayout';
 import type { CatHitZone, KeyboardOrientation, PeekEdge, TailKeyMode } from './catEngine';
@@ -913,6 +914,8 @@ export class KuroCatEngine3D {
   private petting = false;
   private careMood: PetMood = 'idle';
   private careMoodUntil = -100;
+  /** 照顾场景道具（碗 / 水碗 / 球 / 洗澡水），挂在 scene 上，猫和非猫共用。 */
+  private careScene!: CareScene3DHandle;
   private petUntil = -100;
   private petX = 0;
   private rub = 0;
@@ -1036,6 +1039,7 @@ export class KuroCatEngine3D {
     this.catRoot.position.copy(this.homePos);
     this.catRoot.scale.setScalar(0.90);
     this.scene.add(this.catRoot);
+    this.careScene = createCareScene3D(this.scene);
     this.speciesModels = new IndependentSpecies3D(this.scene);
 
     // Soft studio contact shadow underneath the plush sitting body
@@ -5063,5 +5067,7 @@ export class KuroCatEngine3D {
       mood: careAmt > 0 ? this.careMood : 'idle',
       moodAmt: careAmt,
     });
+    // 照顾场景道具：猫和非猫共用同一组碗 / 水 / 球
+    this.careScene.update(t, careAmt > 0 ? this.careMood : 'idle', careAmt, this.catRoot.position);
   }
 }

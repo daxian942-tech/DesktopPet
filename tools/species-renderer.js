@@ -762,6 +762,196 @@
     drawChibi(p, configFor(p, species));
   }
 
+  // src/careScene.ts
+  var TAU = Math.PI * 2;
+  var clamp01 = (v) => Math.max(0, Math.min(1, v));
+  function softEllipse(ctx, x, y, rx, ry, color, edge, rotation = 0) {
+    ctx.fillStyle = edge;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx + 2.2, ry + 2.2, rotation, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rotation, 0, TAU);
+    ctx.fill();
+  }
+  function drawBowl(ctx, x, y, s, time, alpha, isDrink) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    const shell = isDrink ? "#6db6dd" : "#e6a15c";
+    const shellEdge = isDrink ? "#4e93bd" : "#c47c3c";
+    const inner = isDrink ? "#a9dcf3" : "#f6d6a4";
+    ctx.globalAlpha = alpha * 0.14;
+    ctx.fillStyle = "#3a2c22";
+    ctx.beginPath();
+    ctx.ellipse(0, 15, 66, 12, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = shellEdge;
+    ctx.beginPath();
+    ctx.moveTo(-61, -5);
+    ctx.lineTo(61, -5);
+    ctx.quadraticCurveTo(54, 27, 0, 29);
+    ctx.quadraticCurveTo(-54, 27, -61, -5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.moveTo(-57, -4);
+    ctx.lineTo(57, -4);
+    ctx.quadraticCurveTo(50, 24, 0, 26);
+    ctx.quadraticCurveTo(-50, 24, -57, -4);
+    ctx.closePath();
+    ctx.fill();
+    softEllipse(ctx, 0, -5, 59, 15, inner, shellEdge);
+    if (isDrink) {
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 2; i++) {
+        const wob = Math.sin(time * 3.2 + i * 1.7) * 3;
+        ctx.beginPath();
+        ctx.ellipse(-4 + wob, -6 + i * 4, 30 - i * 8, 5.5 - i, 0, 0.1, Math.PI - 0.1);
+        ctx.stroke();
+      }
+    } else {
+      const chew = Math.sin(time * 9.5) * 2.2;
+      const bits = [
+        [-24, -7, 11, "#c9703f"],
+        [1, -9, 12, "#e9b563"],
+        [24, -6, 10, "#b96138"],
+        [-8, -14, 8.5, "#f0c987"],
+        [14, -15, 7.5, "#d98b4a"]
+      ];
+      for (const [bx, by, br, c] of bits) {
+        softEllipse(ctx, bx, by + chew * 0.4, br, br * 0.72, c, "rgba(90,55,30,0.35)");
+      }
+      ctx.fillStyle = "#7fb563";
+      ctx.beginPath();
+      ctx.ellipse(34, -12 + chew * 0.5, 10, 5.5, -0.5, 0, TAU);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.ellipse(0, -5, 54, 12.5, 0, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawBall(ctx, x, y, s, r, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    softEllipse(ctx, 0, 0, r, r, color, "rgba(70,50,40,0.30)");
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, Math.PI * 1.05, Math.PI * 1.75);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawStar(ctx, x, y, r, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#ffd45e";
+    ctx.strokeStyle = "rgba(214,142,38,0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * TAU - Math.PI / 2;
+      const rr = i % 2 === 0 ? r : r * 0.42;
+      const px = x + Math.cos(a) * rr;
+      const py = y + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawCareScene2D(ctx, o) {
+    const amt = clamp01(o.amt);
+    if (amt < 0.012) return;
+    const mood = o.mood;
+    if (mood !== "eat" && mood !== "drink" && mood !== "play" && mood !== "bath") return;
+    const { cx, cy, s, time } = o;
+    const alpha = Math.min(1, amt * 1.5);
+    const rise = (1 - amt) * 22 * s;
+    const bowlX = cx - 96 * s;
+    const bowlY = cy + 8 * s + rise;
+    ctx.save();
+    if (mood === "eat" || mood === "drink") {
+      drawBowl(ctx, bowlX, bowlY, s, time, alpha, mood === "drink");
+      const n = mood === "drink" ? 3 : 4;
+      for (let i = 0; i < n; i++) {
+        const ph = (time * 0.85 + i * 0.29) % 1;
+        const bx = bowlX + Math.sin(time * 2.6 + i * 1.9) * 17 * s + (i - (n - 1) / 2) * 13 * s;
+        const by = bowlY - 26 * s - ph * 62 * s;
+        ctx.globalAlpha = alpha * (1 - ph) * 0.78;
+        ctx.fillStyle = mood === "drink" ? "#c8ecff" : "#fff0cd";
+        ctx.beginPath();
+        ctx.arc(bx, by, (5 + ph * 3.4) * s, 0, TAU);
+        ctx.fill();
+      }
+    } else if (mood === "play") {
+      ctx.globalAlpha = alpha;
+      for (let i = 0; i < 2; i++) {
+        const ph = (time * 1.45 + i * 0.5) % 1;
+        const hop = Math.abs(Math.sin(ph * Math.PI)) * 58 * s;
+        const bx = cx + (i === 0 ? -104 : 104) * s + Math.sin(time * 2.1 + i) * 13 * s;
+        const by = cy + 14 * s - hop;
+        drawBall(ctx, bx, by, s, i === 0 ? 19 : 15, i === 0 ? "#f2837f" : "#8fc7e8");
+      }
+      for (let i = 0; i < 4; i++) {
+        const ph = (time * 1.1 + i * 0.25) % 1;
+        const sx = cx + Math.sin(i * 2.4 + time * 1.2) * 128 * s;
+        const sy = cy - 20 * s - ph * 130 * s;
+        drawStar(ctx, sx, sy, (7 + 4 * Math.sin(ph * Math.PI)) * s, alpha * (1 - ph) * 0.95);
+      }
+    } else {
+      ctx.globalAlpha = alpha * 0.24;
+      ctx.fillStyle = "#8fd0f0";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 18 * s, 122 * s, 20 * s, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.strokeStyle = "#bfe8fb";
+      ctx.lineWidth = 2.2 * s;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 18 * s, 122 * s, 20 * s, 0, 0.1, Math.PI - 0.1);
+      ctx.stroke();
+      for (let i = 0; i < 11; i++) {
+        const ph = (time * 0.95 + i * 0.113) % 1;
+        const dx = Math.sin(i * 2.31 + time * 0.7) * 128 * s;
+        const dy = cy - 180 * s + ph * 214 * s;
+        ctx.globalAlpha = alpha * (1 - Math.abs(ph - 0.5) * 0.9) * 0.86;
+        ctx.fillStyle = i % 3 === 0 ? "#bfe6ff" : "#79c3ec";
+        ctx.beginPath();
+        ctx.ellipse(cx + dx, dy, 4.6 * s, 9.5 * s, 0.22, 0, TAU);
+        ctx.fill();
+      }
+      for (let i = 0; i < 6; i++) {
+        const ph = (time * 0.52 + i * 0.19) % 1;
+        const bx = cx + Math.sin(i * 1.83 + time * 1.15) * 112 * s;
+        const by = cy - 6 * s - ph * 168 * s;
+        const r = (7 + i % 3 * 3.5) * s;
+        ctx.globalAlpha = alpha * (1 - ph) * 0.82;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.2 * s;
+        ctx.beginPath();
+        ctx.arc(bx, by, r, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.36)";
+        ctx.beginPath();
+        ctx.arc(bx - r * 0.32, by - r * 0.34, r * 0.26, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   // src/speciesRenderer2d.ts
   var chibiReach = 0;
   var chibiLastTyping = -100;
@@ -1030,36 +1220,14 @@
       eye: (x, y, rx, ry, color) => drawEye(P, x, y, rx, ry, color)
     };
     (RENDERERS[species] || drawCat)(P);
-    if ((isEating || isDrinking) && moodAmt > 0.01) {
-      const bowlY = 300;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, moodAmt * 1.4);
-      ctx.fillStyle = isDrinking ? "#7fc4e8" : "#e8a866";
-      ctx.beginPath();
-      ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = isDrinking ? "#5aa9d6" : "#cf8a4a";
-      ctx.beginPath();
-      ctx.ellipse(0, bowlY + 5, 52, 13, 0, 0, Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = "#5b4a3a";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      const bubbles = isDrinking ? 2 : 3;
-      for (let i = 0; i < bubbles; i++) {
-        const ph = (time * 1.8 + i * 0.37) % 1;
-        const bx = (i - (bubbles - 1) / 2) * 22 + Math.sin(time * 3 + i) * 6;
-        const by = bowlY - 30 - ph * 45;
-        ctx.globalAlpha = Math.min(1, moodAmt) * (1 - ph) * 0.8;
-        ctx.fillStyle = isDrinking ? "#bfe8ff" : "#fff3d6";
-        ctx.beginPath();
-        ctx.arc(bx, by, isDrinking ? 6 + ph * 3 : 5 + ph * 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
+    drawCareScene2D(ctx, {
+      cx: 0,
+      cy: 300,
+      s: 1,
+      time,
+      mood,
+      amt: moodAmt
+    });
     ctx.restore();
   }
   function renderSpeciesPreview2d(ctx, raw, w, h) {

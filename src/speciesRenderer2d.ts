@@ -10,6 +10,7 @@ import {
   type ResolvedSkin,
 } from './catSkins';
 import { drawChibiSpecies } from './chibi2d';
+import { drawCareScene2D } from './careScene';
 
 export type PetMood = 'idle' | 'happy' | 'eat' | 'drink' | 'play' | 'bath' | 'sleep';
 
@@ -908,40 +909,16 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
   };
   (RENDERERS[species] || drawCat)(P);
 
-  // 进食 / 喝水时，在脚边出现食物碗或水碗 + 咀嚼气泡。
-  // 画在地面固定位置，避免依赖各物种不同的嘴部局部坐标。
-  if ((isEating || isDrinking) && moodAmt > 0.01) {
-    const bowlY = 300;
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, moodAmt * 1.4);
-    // 碗
-    ctx.fillStyle = isDrinking ? '#7fc4e8' : '#e8a866';
-    ctx.beginPath();
-    ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = isDrinking ? '#5aa9d6' : '#cf8a4a';
-    ctx.beginPath();
-    ctx.ellipse(0, bowlY + 5, 52, 13, 0, 0, Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = '#5b4a3a';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.ellipse(0, bowlY, 58, 16, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    // 咀嚼 / 喝水气泡
-    const bubbles = isDrinking ? 2 : 3;
-    for (let i = 0; i < bubbles; i++) {
-      const ph = (time * 1.8 + i * 0.37) % 1;
-      const bx = (i - (bubbles - 1) / 2) * 22 + Math.sin(time * 3 + i) * 6;
-      const by = bowlY - 30 - ph * 45;
-      ctx.globalAlpha = Math.min(1, moodAmt) * (1 - ph) * 0.8;
-      ctx.fillStyle = isDrinking ? '#bfe8ff' : '#fff3d6';
-      ctx.beginPath();
-      ctx.arc(bx, by, isDrinking ? 6 + ph * 3 : 5 + ph * 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
+  // 照顾场景（喂食碗 / 水碗 / 玩耍球 / 洗澡水）统一由 careScene 模块绘制，
+  // 和猫咪在 catEngine 里用的是同一套语义，四个动作都有场景反馈。
+  drawCareScene2D(ctx, {
+    cx: 0,
+    cy: 300,
+    s: 1,
+    time,
+    mood,
+    amt: moodAmt,
+  });
   ctx.restore();
 }
 
