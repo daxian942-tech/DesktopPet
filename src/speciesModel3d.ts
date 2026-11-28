@@ -69,6 +69,8 @@ interface SoftLimbOptions {
   radius: number;
   fur: THREE.Material;
   pawMat: THREE.Material;
+  /** 对比色掌垫：手和身体同色时靠它把手读出来 */
+  pad?: THREE.Material;
   hang?: number;
   bend?: number;
   wristBend?: number;
@@ -364,6 +366,20 @@ export class IndependentSpecies3D {
         limb.soft.elbow.rotation.z += limb.side * (isHand ? 0.06 : 0.05) * tap;
         limb.soft.wrist.rotation.x += (isHand ? 0.19 : 0.14) * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
         limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
+      }
+    }
+
+    // 打字协调：手敲击时身体轻微前倾 + 起伏、头跟着点，整体节奏连成一体
+    const typingAmt = Math.max(this.typingPress.left, this.typingPress.right) * awake;
+    if (typingAmt > 0.01) {
+      const beat = (Math.sin(this.typingPhase.left) + Math.sin(this.typingPhase.right)) * 0.25 + 0.5;
+      if (this.body) {
+        this.body.node.position.z += 0.016 * typingAmt;
+        this.body.node.position.y -= 0.007 * typingAmt * beat;
+      }
+      if (this.head) {
+        this.head.node.rotation.x += 0.022 * typingAmt * beat;
+        this.head.node.position.y -= 0.005 * typingAmt * beat;
       }
     }
   }
@@ -1018,9 +1034,21 @@ export class IndependentSpecies3D {
     this.organicLimb(elbow, opts.fur, [0, -l * 0.30, 0], lowerLen, lowerR, 0.90);
 
     const wrist = this.group(elbow, [0, -l, 0], [0, 0, opts.wristBend ?? 0]);
-    const paw = opts.pawScale ?? [r * 1.18, r * 0.86, r * 1.02];
+    const paw = opts.pawScale ?? [r * 1.36, r * 1.02, r * 1.16];
     // Paw sunk into the forearm tip; softly blended, same seam-free idea.
     this.sphere(wrist, opts.pawMat, [0, -paw[1] * 0.20, paw[2] * 0.14], paw, [0, 0, 0], 20);
+
+    // 对比色掌垫：贴在手心朝前的一面
+    if (opts.pad) {
+      this.sphere(
+        wrist,
+        opts.pad,
+        [0, -paw[1] * 0.10, paw[2] * 0.14 + paw[2] * 0.74],
+        [paw[0] * 0.66, paw[1] * 0.58, paw[2] * 0.26],
+        [0, 0, 0],
+        16,
+      );
+    }
 
     if (opts.claws) {
       const c = opts.claws;
@@ -1103,6 +1131,8 @@ export class IndependentSpecies3D {
       reach: number;
       fur: THREE.Material;
       paw: THREE.Material;
+      /** 对比色掌垫：手和身体同色时全靠它把"手"读出来 */
+      pad?: THREE.Material;
       pawScale?: Vec3;
       /** 手往外撇的角度，让两只手呈八字形，不贴着身体。 */
       splay?: number;
@@ -1110,15 +1140,23 @@ export class IndependentSpecies3D {
   ): THREE.Group {
     const r = opts.radius;
     const reach = opts.reach;
-    // 臂根埋在身体内部前半段，整条臂绕 X 轴前倾约 58°，从身体前下方伸出来
+    // 臂根埋在身体内部前半段，整条臂前倾约 53°，从身体前下方伸出来
     const hand = this.group(
       parent,
       [opts.x, opts.y, opts.bodyZ * 0.58],
-      [-1.02, 0, side * (opts.splay ?? 0.16)],
+      [-0.92, 0, side * (opts.splay ?? 0.14)],
     );
-    this.capsule(hand, opts.fur, [0, -reach * 0.42, 0], r, reach + r * 1.4);
-    const paw = this.group(hand, [0, -reach * 0.90, 0.01]);
-    this.sphere(paw, opts.paw, [0, 0, 0], opts.pawScale ?? [r * 1.28, r * 0.92, r * 1.22], [0, 0, 0], 18);
+    // 短粗圆臂：比原来更粗，Q 版才有"肉感"
+    this.capsule(hand, opts.fur, [0, -reach * 0.40, 0], r * 1.02, reach + r * 1.1);
+    // 大圆掌：压扁成卡通饼状，比原来大一圈
+    const ps = opts.pawScale ?? [r * 1.55, r * 1.16, r * 1.40];
+    const paw = this.group(hand, [0, -reach * 0.84, 0.02]);
+    this.sphere(paw, opts.paw, [0, 0, 0], ps, [0, 0, 0], 20);
+    // 掌垫：对比色扁椭圆，贴在手心朝前的一面 —— 深色身体上的黑手也能一眼看出是手
+    if (opts.pad) {
+      // z 必须接近掌球的半径（ps[2]），否则会被球体整个包住看不见
+      this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
+    }
     this.trackLimb(hand, side, true, side * 0.5, undefined, true);
     return hand;
   }
@@ -1138,9 +1176,9 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       // 前爪手：抬到胸前、明显外露，能看清地敲键盘
       this.frontHand(model, side, {
-        x: side * 0.30, y: 0.62, bodyZ: 0.84,
-        radius: 0.088, reach: 0.60, fur, paw: cream,
-        pawScale: [0.118, 0.082, 0.118], splay: 0.13,
+        x: side * 0.29, y: 0.60, bodyZ: 0.84,
+        radius: 0.095, reach: 0.58, fur, paw: cream,
+        pad: this.material(p.blush, 0.92), splay: 0.10,
       });
       this.stubLeg(model, side * 0.40, 0.36, -0.50, 0.165, 0.26, fur, cream, side, false);
     }
@@ -1179,9 +1217,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.29, y: 0.60, bodyZ: 0.82,
-        radius: 0.082, reach: 0.58, fur, paw: socks,
-        pawScale: [0.112, 0.078, 0.112], splay: 0.12,
+        x: side * 0.28, y: 0.58, bodyZ: 0.82,
+        radius: 0.090, reach: 0.56, fur, paw: socks, pad: pale, splay: 0.10,
       });
       this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
     }
@@ -1220,9 +1257,9 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.31, y: 0.64, bodyZ: 0.80,
-        radius: 0.095, reach: 0.60, fur: black, paw: black,
-        pawScale: [0.125, 0.088, 0.125], splay: 0.14,
+        x: side * 0.30, y: 0.62, bodyZ: 0.80,
+        radius: 0.102, reach: 0.58, fur: black, paw: black,
+        pad: this.material(new THREE.Color('#d6d6dc'), 0.88), splay: 0.10,
       });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
     }
@@ -1254,10 +1291,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      const front = this.group(model, [side * 0.30, 0.72, 0.22]);
-      this.capsule(front, fur, [0, -0.10, 0], 0.085, 0.26);
-      this.sphere(front, pale, [0, -0.24, 0.05], [0.10, 0.06, 0.13], [0, 0, 0], 16);
-      this.trackLimb(front, side, true, side * 0.5);
+      const front = this.group(model, [side * 0.29, 0.74, 0.28], [-0.24, 0, side * 0.10]);
+      this.capsule(front, fur, [0, -0.11, 0], 0.102, 0.28);
+      this.sphere(front, pale, [0, -0.25, 0.035], [0.145, 0.095, 0.150], [0, 0, 0], 18);
+      this.sphere(front, this.material(p.blush, 0.90), [0, -0.255, 0.158], [0.100, 0.066, 0.038], [0, 0, 0], 14);
+      this.trackLimb(front, side, true, side * 0.5, undefined, true);
       const foot = this.group(model, [side * 0.24, 0.10, 0.28]);
       this.sphere(foot, fur, [0, 0, 0], [0.17, 0.09, 0.24], [0, 0, 0], 18);
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
@@ -1308,9 +1346,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      const flipper = this.group(model, [side * 0.57, 1.10, -0.015], [0, 0, -side * 0.25]);
-      this.capsule(flipper, dark, [side * 0.10, -0.18, 0], 0.13, 0.62, [0.75, 1, 1.15], [0, 0, side * 0.16]);
-      this.trackLimb(flipper, side, true, side * 0.5);
+      // 鳍往身前挪一点，并在鳍尖加橙色掌垫 —— 黑色身体上的黑鳍靠这块亮色才读得出"手"
+      const flipper = this.group(model, [side * 0.53, 1.06, 0.10], [0, 0, -side * 0.20]);
+      this.capsule(flipper, dark, [side * 0.08, -0.19, 0.02], 0.135, 0.64, [0.80, 1, 1.08], [0, 0, side * 0.16]);
+      this.sphere(flipper, orange, [side * 0.205, -0.47, 0.075], [0.105, 0.070, 0.085], [0, 0, 0], 14);
+      this.trackLimb(flipper, side, true, side * 0.5, undefined, true);
       const foot = this.group(model, [side * 0.27, 0.08, 0.22]);
       this.sphere(foot, orange, [0, 0, 0], [0.28, 0.08, 0.37], [0, side * 0.08, 0], 20);
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
@@ -1363,11 +1403,11 @@ export class IndependentSpecies3D {
       const rear = this.group(model, [side * 0.56, 0.34, -0.28]);
       this.sphere(rear, green, [0, 0, 0], [0.30, 0.24, 0.34]);
       this.trackLimb(rear, side, false, Math.PI + side * 0.5);
-      const front = this.group(model, [side * 0.50, 0.34, 0.36]);
-      this.capsule(front, green, [0, -0.10, 0], 0.085, 0.24);
-      this.trackLimb(front, side, true, side * 0.5);
-      const frontFoot = this.webFoot(model, [side * 0.50, 0.05, 0.54], side * 0.10, pale);
-      this.trackLimb(frontFoot, side, true, side * 0.8);
+      const front = this.group(model, [side * 0.48, 0.36, 0.36]);
+      this.capsule(front, green, [0, -0.10, 0], 0.094, 0.26);
+      this.trackLimb(front, side, true, side * 0.5, undefined, true);
+      const frontFoot = this.webFoot(model, [side * 0.48, 0.05, 0.54], side * 0.10, pale);
+      this.trackLimb(frontFoot, side, true, side * 0.8, undefined, true);
       const rearFoot = this.webFoot(model, [side * 0.62, 0.05, 0.04], -side * 0.20, pale);
       this.trackLimb(rearFoot, side, false, Math.PI + side * 0.8);
     }
@@ -1394,8 +1434,9 @@ export class IndependentSpecies3D {
         {
           upper: 0.13, lower: 0.12, radius: 0.13,
           fur, pawMat: fur,
+          pad: this.material(p.blush, 0.90),
           hang: -side * 0.12, bend: -side * 0.12,
-          pawScale: [0.14, 0.105, 0.13],
+          pawScale: [0.17, 0.128, 0.155],
         },
         true, side * 0.5,
       ));
@@ -1503,9 +1544,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.26, y: 0.60, bodyZ: 0.82,
-        radius: 0.090, reach: 0.60, fur: white, paw: patches,
-        pawScale: [0.120, 0.084, 0.120], splay: 0.06,
+        x: side * 0.27, y: 0.60, bodyZ: 0.82,
+        radius: 0.096, reach: 0.58, fur: white, paw: patches, pad: pink, splay: 0.08,
       });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
     }
@@ -1597,9 +1637,9 @@ export class IndependentSpecies3D {
         {
           upper: 0.13, lower: 0.12, radius: 0.145,
           fur, pawMat: fur,
+          pad: this.material(new THREE.Color('#ffe7ae'), 0.92),
           hang: -side * 0.08, bend: -side * 0.10,
-          pawScale: [0.155, 0.115, 0.145],
-          claws: { color: new THREE.Color('#6b3a1f'), count: 3, spread: 0.058, size: 0.032, depth: 0.14 },
+          pawScale: [0.19, 0.142, 0.178],
         },
         true, side * 0.5,
       ));
@@ -1689,9 +1729,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.27, y: 0.56, bodyZ: 0.76,
-        radius: 0.080, reach: 0.56, fur: dark, paw: dark,
-        pawScale: [0.108, 0.076, 0.108], splay: 0.12,
+        x: side * 0.26, y: 0.55, bodyZ: 0.76,
+        radius: 0.086, reach: 0.55, fur: dark, paw: dark, pad: muzzleMat, splay: 0.09,
       });
       this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
     }
@@ -1769,8 +1808,9 @@ export class IndependentSpecies3D {
         {
           upper: 0.12, lower: 0.11, radius: 0.125,
           fur, pawMat: darkPaw,
+          pad: this.material(new THREE.Color('#f7c3d3'), 0.90),
           hang: raised ? 0.62 : -side * 0.12, bend: -side * 0.08,
-          pawScale: [0.118, 0.088, 0.092],
+          pawScale: [0.152, 0.114, 0.122],
         },
         true, side * 0.5,
       ));
@@ -1868,8 +1908,9 @@ export class IndependentSpecies3D {
         {
           upper: 0.12, lower: 0.11, radius: 0.13,
           fur, pawMat: this.material(p.paw),
+          pad: this.material(new THREE.Color('#ecd8c0'), 0.92),
           hang: -side * 0.15, bend: -side * 0.10,
-          pawScale: [0.135, 0.098, 0.125],
+          pawScale: [0.17, 0.126, 0.155],
         },
         true, side * 0.5,
       );

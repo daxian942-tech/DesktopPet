@@ -32339,6 +32339,18 @@ void main() {
           limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
         }
       }
+      const typingAmt = Math.max(this.typingPress.left, this.typingPress.right) * awake;
+      if (typingAmt > 0.01) {
+        const beat = (Math.sin(this.typingPhase.left) + Math.sin(this.typingPhase.right)) * 0.25 + 0.5;
+        if (this.body) {
+          this.body.node.position.z += 0.016 * typingAmt;
+          this.body.node.position.y -= 7e-3 * typingAmt * beat;
+        }
+        if (this.head) {
+          this.head.node.rotation.x += 0.022 * typingAmt * beat;
+          this.head.node.position.y -= 5e-3 * typingAmt * beat;
+        }
+      }
     }
     createPalette(skin) {
       const fur = new Color(skin.furColor || "#f4ece6");
@@ -32800,8 +32812,18 @@ void main() {
       const lowerLen = l + lowerR * 1.6;
       this.organicLimb(elbow, opts.fur, [0, -l * 0.3, 0], lowerLen, lowerR, 0.9);
       const wrist = this.group(elbow, [0, -l, 0], [0, 0, opts.wristBend ?? 0]);
-      const paw = opts.pawScale ?? [r * 1.18, r * 0.86, r * 1.02];
+      const paw = opts.pawScale ?? [r * 1.36, r * 1.02, r * 1.16];
       this.sphere(wrist, opts.pawMat, [0, -paw[1] * 0.2, paw[2] * 0.14], paw, [0, 0, 0], 20);
+      if (opts.pad) {
+        this.sphere(
+          wrist,
+          opts.pad,
+          [0, -paw[1] * 0.1, paw[2] * 0.14 + paw[2] * 0.74],
+          [paw[0] * 0.66, paw[1] * 0.58, paw[2] * 0.26],
+          [0, 0, 0],
+          16
+        );
+      }
       if (opts.claws) {
         const c = opts.claws;
         for (let i = 0; i < c.count; i++) {
@@ -32883,11 +32905,15 @@ void main() {
       const hand = this.group(
         parent,
         [opts.x, opts.y, opts.bodyZ * 0.58],
-        [-1.02, 0, side * (opts.splay ?? 0.16)]
+        [-0.92, 0, side * (opts.splay ?? 0.14)]
       );
-      this.capsule(hand, opts.fur, [0, -reach * 0.42, 0], r, reach + r * 1.4);
-      const paw = this.group(hand, [0, -reach * 0.9, 0.01]);
-      this.sphere(paw, opts.paw, [0, 0, 0], opts.pawScale ?? [r * 1.28, r * 0.92, r * 1.22], [0, 0, 0], 18);
+      this.capsule(hand, opts.fur, [0, -reach * 0.4, 0], r * 1.02, reach + r * 1.1);
+      const ps = opts.pawScale ?? [r * 1.55, r * 1.16, r * 1.4];
+      const paw = this.group(hand, [0, -reach * 0.84, 0.02]);
+      this.sphere(paw, opts.paw, [0, 0, 0], ps, [0, 0, 0], 20);
+      if (opts.pad) {
+        this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
+      }
       this.trackLimb(hand, side, true, side * 0.5, void 0, true);
       return hand;
     }
@@ -32902,15 +32928,15 @@ void main() {
       this.trackBody(body);
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
-          x: side * 0.3,
-          y: 0.62,
+          x: side * 0.29,
+          y: 0.6,
           bodyZ: 0.84,
-          radius: 0.088,
-          reach: 0.6,
+          radius: 0.095,
+          reach: 0.58,
           fur,
           paw: cream,
-          pawScale: [0.118, 0.082, 0.118],
-          splay: 0.13
+          pad: this.material(p.blush, 0.92),
+          splay: 0.1
         });
         this.stubLeg(model, side * 0.4, 0.36, -0.5, 0.165, 0.26, fur, cream, side, false);
       }
@@ -32943,15 +32969,15 @@ void main() {
       this.trackBody(body);
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
-          x: side * 0.29,
-          y: 0.6,
+          x: side * 0.28,
+          y: 0.58,
           bodyZ: 0.82,
-          radius: 0.082,
-          reach: 0.58,
+          radius: 0.09,
+          reach: 0.56,
           fur,
           paw: socks,
-          pawScale: [0.112, 0.078, 0.112],
-          splay: 0.12
+          pad: pale,
+          splay: 0.1
         });
         this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
       }
@@ -32984,15 +33010,15 @@ void main() {
       this.trackBody(body);
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
-          x: side * 0.31,
-          y: 0.64,
+          x: side * 0.3,
+          y: 0.62,
           bodyZ: 0.8,
-          radius: 0.095,
-          reach: 0.6,
+          radius: 0.102,
+          reach: 0.58,
           fur: black,
           paw: black,
-          pawScale: [0.125, 0.088, 0.125],
-          splay: 0.14
+          pad: this.material(new Color("#d6d6dc"), 0.88),
+          splay: 0.1
         });
         this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
       }
@@ -33019,10 +33045,11 @@ void main() {
       this.sphere(body, pale, [0, -0.12, 0.32], [0.34, 0.3, 0.2]);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        const front = this.group(model, [side * 0.3, 0.72, 0.22]);
-        this.capsule(front, fur, [0, -0.1, 0], 0.085, 0.26);
-        this.sphere(front, pale, [0, -0.24, 0.05], [0.1, 0.06, 0.13], [0, 0, 0], 16);
-        this.trackLimb(front, side, true, side * 0.5);
+        const front = this.group(model, [side * 0.29, 0.74, 0.28], [-0.24, 0, side * 0.1]);
+        this.capsule(front, fur, [0, -0.11, 0], 0.102, 0.28);
+        this.sphere(front, pale, [0, -0.25, 0.035], [0.145, 0.095, 0.15], [0, 0, 0], 18);
+        this.sphere(front, this.material(p.blush, 0.9), [0, -0.255, 0.158], [0.1, 0.066, 0.038], [0, 0, 0], 14);
+        this.trackLimb(front, side, true, side * 0.5, void 0, true);
         const foot = this.group(model, [side * 0.24, 0.1, 0.28]);
         this.sphere(foot, fur, [0, 0, 0], [0.17, 0.09, 0.24], [0, 0, 0], 18);
         this.trackLimb(foot, side, false, Math.PI + side * 0.5);
@@ -33068,9 +33095,10 @@ void main() {
       this.cone(body, orange, [0, 1.29, 0.62], 0.12, 0.34, [1, 0.72, 1], [Math.PI / 2, 0, 0], 20);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        const flipper = this.group(model, [side * 0.57, 1.1, -0.015], [0, 0, -side * 0.25]);
-        this.capsule(flipper, dark, [side * 0.1, -0.18, 0], 0.13, 0.62, [0.75, 1, 1.15], [0, 0, side * 0.16]);
-        this.trackLimb(flipper, side, true, side * 0.5);
+        const flipper = this.group(model, [side * 0.53, 1.06, 0.1], [0, 0, -side * 0.2]);
+        this.capsule(flipper, dark, [side * 0.08, -0.19, 0.02], 0.135, 0.64, [0.8, 1, 1.08], [0, 0, side * 0.16]);
+        this.sphere(flipper, orange, [side * 0.205, -0.47, 0.075], [0.105, 0.07, 0.085], [0, 0, 0], 14);
+        this.trackLimb(flipper, side, true, side * 0.5, void 0, true);
         const foot = this.group(model, [side * 0.27, 0.08, 0.22]);
         this.sphere(foot, orange, [0, 0, 0], [0.28, 0.08, 0.37], [0, side * 0.08, 0], 20);
         this.trackLimb(foot, side, false, Math.PI + side * 0.5);
@@ -33117,11 +33145,11 @@ void main() {
         const rear = this.group(model, [side * 0.56, 0.34, -0.28]);
         this.sphere(rear, green, [0, 0, 0], [0.3, 0.24, 0.34]);
         this.trackLimb(rear, side, false, Math.PI + side * 0.5);
-        const front = this.group(model, [side * 0.5, 0.34, 0.36]);
-        this.capsule(front, green, [0, -0.1, 0], 0.085, 0.24);
-        this.trackLimb(front, side, true, side * 0.5);
-        const frontFoot = this.webFoot(model, [side * 0.5, 0.05, 0.54], side * 0.1, pale);
-        this.trackLimb(frontFoot, side, true, side * 0.8);
+        const front = this.group(model, [side * 0.48, 0.36, 0.36]);
+        this.capsule(front, green, [0, -0.1, 0], 0.094, 0.26);
+        this.trackLimb(front, side, true, side * 0.5, void 0, true);
+        const frontFoot = this.webFoot(model, [side * 0.48, 0.05, 0.54], side * 0.1, pale);
+        this.trackLimb(frontFoot, side, true, side * 0.8, void 0, true);
         const rearFoot = this.webFoot(model, [side * 0.62, 0.05, 0.04], -side * 0.2, pale);
         this.trackLimb(rearFoot, side, false, Math.PI + side * 0.8);
       }
@@ -33148,9 +33176,10 @@ void main() {
             radius: 0.13,
             fur,
             pawMat: fur,
+            pad: this.material(p.blush, 0.9),
             hang: -side * 0.12,
             bend: -side * 0.12,
-            pawScale: [0.14, 0.105, 0.13]
+            pawScale: [0.17, 0.128, 0.155]
           },
           true,
           side * 0.5
@@ -33245,15 +33274,15 @@ void main() {
       this.trackBody(body);
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
-          x: side * 0.26,
+          x: side * 0.27,
           y: 0.6,
           bodyZ: 0.82,
-          radius: 0.09,
-          reach: 0.6,
+          radius: 0.096,
+          reach: 0.58,
           fur: white,
           paw: patches,
-          pawScale: [0.12, 0.084, 0.12],
-          splay: 0.06
+          pad: pink,
+          splay: 0.08
         });
         this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
       }
@@ -33332,10 +33361,10 @@ void main() {
             radius: 0.145,
             fur,
             pawMat: fur,
+            pad: this.material(new Color("#ffe7ae"), 0.92),
             hang: -side * 0.08,
             bend: -side * 0.1,
-            pawScale: [0.155, 0.115, 0.145],
-            claws: { color: new Color("#6b3a1f"), count: 3, spread: 0.058, size: 0.032, depth: 0.14 }
+            pawScale: [0.19, 0.142, 0.178]
           },
           true,
           side * 0.5
@@ -33414,15 +33443,15 @@ void main() {
       this.trackBody(body);
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
-          x: side * 0.27,
-          y: 0.56,
+          x: side * 0.26,
+          y: 0.55,
           bodyZ: 0.76,
-          radius: 0.08,
-          reach: 0.56,
+          radius: 0.086,
+          reach: 0.55,
           fur: dark,
           paw: dark,
-          pawScale: [0.108, 0.076, 0.108],
-          splay: 0.12
+          pad: muzzleMat,
+          splay: 0.09
         });
         this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
       }
@@ -33494,9 +33523,10 @@ void main() {
             radius: 0.125,
             fur,
             pawMat: darkPaw,
+            pad: this.material(new Color("#f7c3d3"), 0.9),
             hang: raised ? 0.62 : -side * 0.12,
             bend: -side * 0.08,
-            pawScale: [0.118, 0.088, 0.092]
+            pawScale: [0.152, 0.114, 0.122]
           },
           true,
           side * 0.5
@@ -33586,9 +33616,10 @@ void main() {
             radius: 0.13,
             fur,
             pawMat: this.material(p.paw),
+            pad: this.material(new Color("#ecd8c0"), 0.92),
             hang: -side * 0.15,
             bend: -side * 0.1,
-            pawScale: [0.135, 0.098, 0.125]
+            pawScale: [0.17, 0.126, 0.155]
           },
           true,
           side * 0.5
