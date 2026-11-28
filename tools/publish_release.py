@@ -41,14 +41,20 @@ def api(path, method="GET", token=None, payload=None, data=None, content_type=No
         content_type = "application/json"
     if content_type:
         headers["Content-Type"] = content_type
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else None
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")[:600]
-        raise RuntimeError(f"HTTP {e.code} {method} {url}\n{detail}") from e
+    last_err = None
+    for attempt in range(4):
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                body = resp.read().decode("utf-8")
+                return json.loads(body) if body else None
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:600]
+            raise RuntimeError(f"HTTP {e.code} {method} {url}\n{detail}") from e
+        except (urllib.error.URLError, OSError) as e:
+            last_err = e
+            print(f"  [network retry {attempt + 1}/4] {e}")
+    raise RuntimeError(f"网络请求反复失败（已重试 4 次）: {method} {url}\n{last_err}")
 
 
 def resolve_token():
