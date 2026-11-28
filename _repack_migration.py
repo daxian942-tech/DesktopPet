@@ -42,6 +42,7 @@ skip = {
     "_video_probe", "_ui_shots", "_update_shots", "_care_shots",
     "_motions", "_redraw2d", "_redraw2d_typing", "_redraw3d", "_redraw3d_typing", "_hand_pose",
     "_milk_ref", "_keyboard_shots", "_care_quickbar", "_care_scene", "_jump_shots",
+    "_video_assets", "_video_audio",
 }
 exclude_names = {out.name, "_migration_old.zip", "_DesktopPet-绿色版-旧版备份.exe"}
 
