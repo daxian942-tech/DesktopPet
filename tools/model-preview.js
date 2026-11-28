@@ -32135,9 +32135,11 @@ void main() {
   var WHITE = new Color("#ffffff");
   var BLACK = new Color("#111318");
   var QUADRUPED_YAW = {
-    dog: 0.82,
-    fox: 0.78,
-    panda: 0.74,
+    // 偏航收小：桌宠是面对键盘的，之前 0.7~0.8（约 45°）会把新加的小手转到侧面，
+    // 正对镜头时两只手都看不见。保留一点点侧身，只为了让肚子和尾巴有立体感。
+    dog: 0.26,
+    fox: 0.24,
+    panda: 0.2,
     // 兔子已改为正面坐墩造型，不再需要 3/4 偏航
     // The reference is a front-facing shocked face, not a side profile.
     grasscow: 0.1,
@@ -32304,18 +32306,26 @@ void main() {
       for (const motion of this.customMotions) motion(time, options);
       this.applyCareGesture(time, options.mood, options.moodAmt, awake);
       for (const limb of this.limbs) {
-        if (!limb.front) continue;
+        const isHand = limb.arm === true;
+        if (!isHand && !limb.front) continue;
         const isLeft = limb.side < 0;
         const tap = (isLeft ? tapLeft : tapRight) * awake;
         if (tap < 2e-3) continue;
         const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-        limb.node.rotation.x -= 0.28 * tap;
-        limb.node.position.y += 0.075 * tap;
-        limb.node.rotation.z += limb.side * 0.03 * tap;
+        if (isHand) {
+          limb.node.rotation.x += 0.26 * tap;
+          limb.node.position.y -= 0.07 * tap;
+          limb.node.position.z += 0.045 * tap;
+        } else {
+          limb.node.rotation.x -= 0.28 * tap;
+          limb.node.position.y += 0.075 * tap;
+        }
+        limb.node.rotation.z += limb.side * (isHand ? 0.05 : 0.03) * tap;
         if (limb.soft) {
-          limb.soft.elbow.rotation.x += 0.2 * tap;
-          limb.soft.elbow.rotation.z += limb.side * 0.05 * tap;
-          limb.soft.wrist.rotation.x += 0.14 * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
+          limb.soft.elbow.rotation.x += (isHand ? 0.26 : 0.2) * tap;
+          limb.soft.elbow.rotation.z += limb.side * (isHand ? 0.06 : 0.05) * tap;
+          limb.soft.wrist.rotation.x += (isHand ? 0.19 : 0.14) * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
+          limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
         }
       }
     }
@@ -32428,8 +32438,8 @@ void main() {
     trackEar(node, side) {
       this.ears.push({ ...this.track(node), side });
     }
-    trackLimb(node, side, front, phase, soft) {
-      this.limbs.push({ ...this.track(node), side, front, phase, soft });
+    trackLimb(node, side, front, phase, soft, arm) {
+      this.limbs.push({ ...this.track(node), side, front, phase, soft, arm });
     }
     eye(parent, position, radius, options = {}) {
       const p = this.palette;
@@ -32757,7 +32767,7 @@ void main() {
         }
       }
       const ref = { root, elbow, wrist, side, front };
-      this.trackLimb(root, side, front, phase, ref);
+      this.trackLimb(root, side, front, phase, ref, front);
       return ref;
     }
     buildSpecies(species) {
@@ -32811,6 +32821,26 @@ void main() {
       this.trackLimb(leg, side, front, (front ? 0 : Math.PI) + side * 0.6);
       return leg;
     }
+    /**
+     * Q 版小前爪手：竖直短圆臂 + 圆掌，从胸前伸出来搭在键盘上。
+     * 四足动物原来把前腿做成半埋的 stubLeg（位置低、贴着身子），
+     * 看着只是"腿"，没有能敲键盘的手。这里换成位置抬高、明显外露的小手，
+     * 并标记 arm —— 打字动画只驱动手，动作才看得清。
+     */
+    frontHand(parent, side, opts) {
+      const r = opts.radius;
+      const reach = opts.reach;
+      const hand = this.group(
+        parent,
+        [opts.x, opts.y, opts.bodyZ * 0.58],
+        [-1.02, 0, side * (opts.splay ?? 0.16)]
+      );
+      this.capsule(hand, opts.fur, [0, -reach * 0.42, 0], r, reach + r * 1.4);
+      const paw = this.group(hand, [0, -reach * 0.9, 0.01]);
+      this.sphere(paw, opts.paw, [0, 0, 0], opts.pawScale ?? [r * 1.28, r * 0.92, r * 1.22], [0, 0, 0], 18);
+      this.trackLimb(hand, side, true, side * 0.5, void 0, true);
+      return hand;
+    }
     buildDog() {
       const p = this.palette;
       const model = this.model;
@@ -32821,7 +32851,17 @@ void main() {
       this.sphere(body, cream, [0, -0.1, 0.58], [0.36, 0.27, 0.3]);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        this.stubLeg(model, side * 0.4, 0.36, 0.48, 0.155, 0.26, fur, cream, side, true);
+        this.frontHand(model, side, {
+          x: side * 0.3,
+          y: 0.62,
+          bodyZ: 0.84,
+          radius: 0.088,
+          reach: 0.6,
+          fur,
+          paw: cream,
+          pawScale: [0.118, 0.082, 0.118],
+          splay: 0.13
+        });
         this.stubLeg(model, side * 0.4, 0.36, -0.5, 0.165, 0.26, fur, cream, side, false);
       }
       const head = this.group(model, [0, 1.3, 0.56]);
@@ -32852,7 +32892,17 @@ void main() {
       this.sphere(body, pale, [0, -0.12, 0.56], [0.34, 0.24, 0.28]);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        this.stubLeg(model, side * 0.38, 0.34, 0.46, 0.13, 0.24, socks, socks, side, true);
+        this.frontHand(model, side, {
+          x: side * 0.29,
+          y: 0.6,
+          bodyZ: 0.82,
+          radius: 0.082,
+          reach: 0.58,
+          fur,
+          paw: socks,
+          pawScale: [0.112, 0.078, 0.112],
+          splay: 0.12
+        });
         this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
       }
       const head = this.group(model, [0, 1.24, 0.54]);
@@ -32868,9 +32918,9 @@ void main() {
         this.trackEar(ear, side);
       }
       this.trackHead(head);
-      const tail = this.group(model, [0, 0.6, -0.58]);
-      this.tube(tail, fur, [[0, 0, 0], [0, 0.06, -0.28], [0, 0.16, -0.52], [0, 0.12, -0.7]], 0.19);
-      this.sphere(tail, pale, [0, 0.12, -0.72], [0.19, 0.21, 0.2], [0, 0, 0], 20);
+      const tail = this.group(model, [0.3, 0.46, -0.5]);
+      this.tube(tail, fur, [[0, 0, 0], [0.12, -0.02, -0.22], [0.2, 0.1, -0.4], [0.26, 0.26, -0.44]], 0.17);
+      this.sphere(tail, pale, [0.3, 0.28, -0.44], [0.17, 0.19, 0.18], [0, 0, 0], 20);
       this.trackTail(tail);
     }
     buildPanda() {
@@ -32883,7 +32933,17 @@ void main() {
       this.sphere(body, black, [0, 0.1, 0.28], [0.64, 0.38, 0.54]);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.17, 0.25, black, black, side, true);
+        this.frontHand(model, side, {
+          x: side * 0.31,
+          y: 0.64,
+          bodyZ: 0.8,
+          radius: 0.095,
+          reach: 0.6,
+          fur: black,
+          paw: black,
+          pawScale: [0.125, 0.088, 0.125],
+          splay: 0.14
+        });
         this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
       }
       const head = this.group(model, [0, 1.34, 0.52]);
@@ -33134,7 +33194,17 @@ void main() {
       this.sphere(body, patches, [0.12, 0.4, -0.26], [0.26, 0.09, 0.3], [0, 0, 0], 18);
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.16, 0.25, white, patches, side, true);
+        this.frontHand(model, side, {
+          x: side * 0.26,
+          y: 0.6,
+          bodyZ: 0.82,
+          radius: 0.09,
+          reach: 0.6,
+          fur: white,
+          paw: patches,
+          pawScale: [0.12, 0.084, 0.12],
+          splay: 0.06
+        });
         this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
       }
       const head = this.group(model, [0, 1.3, 0.54]);
@@ -33293,7 +33363,17 @@ void main() {
       }
       this.trackBody(body);
       for (const side of [-1, 1]) {
-        this.stubLeg(model, side * 0.38, 0.32, 0.42, 0.14, 0.22, dark, dark, side, true);
+        this.frontHand(model, side, {
+          x: side * 0.27,
+          y: 0.56,
+          bodyZ: 0.76,
+          radius: 0.08,
+          reach: 0.56,
+          fur: dark,
+          paw: dark,
+          pawScale: [0.108, 0.076, 0.108],
+          splay: 0.12
+        });
         this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
       }
       const head = this.group(model, [0, 1.12, 0.5]);

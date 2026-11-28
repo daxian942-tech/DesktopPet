@@ -38,6 +38,8 @@ interface LimbRef extends PartRef {
   front: boolean;
   phase: number;
   soft?: SoftLimbRef;
+  /** 真正用来敲键盘的"手"。打字动画优先驱动 arm，没有 arm 的物种才退回前腿。 */
+  arm?: boolean;
 }
 
 /** The same motion inputs the generic animation loop receives. */
@@ -89,9 +91,11 @@ const BLACK = new THREE.Color('#111318');
 // exposes the long horizontal torso and all four legs instead of collapsing
 // them into a front-facing, cat-like silhouette.
 const QUADRUPED_YAW: Partial<Record<NonCatSpecies, number>> = {
-  dog: 0.82,
-  fox: 0.78,
-  panda: 0.74,
+  // 偏航收小：桌宠是面对键盘的，之前 0.7~0.8（约 45°）会把新加的小手转到侧面，
+  // 正对镜头时两只手都看不见。保留一点点侧身，只为了让肚子和尾巴有立体感。
+  dog: 0.26,
+  fox: 0.24,
+  panda: 0.20,
   // 兔子已改为正面坐墩造型，不再需要 3/4 偏航
   // The reference is a front-facing shocked face, not a side profile.
   grasscow: 0.10,
@@ -323,21 +327,30 @@ export class IndependentSpecies3D {
     // 让牛低头嚼草、狗大口啃、兔子快速啄食……每台动物都不一样。
     this.applyCareGesture(time, options.mood, options.moodAmt, awake);
 
-    // Apply the tap after the species' own gesture so typing always reads
-    // clearly, even while the animal is waving or dancing.
+    // 打字：优先驱动真正的手（arm），没有手的物种退回前腿、幅度小一点。
+    // 手要有"往前探 + 抬起 + 快速落回"的行程，才看得出在敲键，而不是微微抖动。
     for (const limb of this.limbs) {
-      if (!limb.front) continue;
+      const isHand = limb.arm === true;
+      if (!isHand && !limb.front) continue;
       const isLeft = limb.side < 0;
       const tap = (isLeft ? tapLeft : tapRight) * awake;
       if (tap < 0.002) continue;
       const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-      limb.node.rotation.x -= 0.28 * tap;
-      limb.node.position.y += 0.075 * tap;
-      limb.node.rotation.z += limb.side * 0.03 * tap;
+      if (isHand) {
+        // 手：按键时臂略回收把掌往前下方压（像真的按下去），松开自然回位
+        limb.node.rotation.x += 0.26 * tap;
+        limb.node.position.y -= 0.070 * tap;
+        limb.node.position.z += 0.045 * tap;
+      } else {
+        limb.node.rotation.x -= 0.28 * tap;
+        limb.node.position.y += 0.075 * tap;
+      }
+      limb.node.rotation.z += limb.side * (isHand ? 0.05 : 0.03) * tap;
       if (limb.soft) {
-        limb.soft.elbow.rotation.x += 0.20 * tap;
-        limb.soft.elbow.rotation.z += limb.side * 0.05 * tap;
-        limb.soft.wrist.rotation.x += 0.14 * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
+        limb.soft.elbow.rotation.x += (isHand ? 0.26 : 0.20) * tap;
+        limb.soft.elbow.rotation.z += limb.side * (isHand ? 0.06 : 0.05) * tap;
+        limb.soft.wrist.rotation.x += (isHand ? 0.19 : 0.14) * tap * (0.78 + 0.22 * Math.sin(phase + 0.6));
+        limb.soft.wrist.rotation.z += limb.side * 0.05 * tap;
       }
     }
   }
@@ -536,8 +549,9 @@ export class IndependentSpecies3D {
     front: boolean,
     phase: number,
     soft?: SoftLimbRef,
+    arm?: boolean,
   ): void {
-    this.limbs.push({ ...this.track(node), side, front, phase, soft });
+    this.limbs.push({ ...this.track(node), side, front, phase, soft, arm });
   }
 
   private eye(
@@ -948,7 +962,7 @@ export class IndependentSpecies3D {
     }
 
     const ref = { root, elbow, wrist, side, front };
-    this.trackLimb(root, side, front, phase, ref);
+    this.trackLimb(root, side, front, phase, ref, front);
     return ref;
   }
 
@@ -993,6 +1007,46 @@ export class IndependentSpecies3D {
     return leg;
   }
 
+  /**
+   * Q 版小前爪手：竖直短圆臂 + 圆掌，从胸前伸出来搭在键盘上。
+   * 四足动物原来把前腿做成半埋的 stubLeg（位置低、贴着身子），
+   * 看着只是"腿"，没有能敲键盘的手。这里换成位置抬高、明显外露的小手，
+   * 并标记 arm —— 打字动画只驱动手，动作才看得清。
+   */
+  private frontHand(
+    parent: THREE.Object3D,
+    side: -1 | 1,
+    opts: {
+      x: number;
+      /** 臂根高度，落在身体中部偏下 */
+      y: number;
+      /** 身体前缘的 z 半径：圆掌必须伸到这个值之外，否则会被身体吞掉 */
+      bodyZ: number;
+      radius: number;
+      /** 手臂总长，决定掌往身体前下方探出多远 */
+      reach: number;
+      fur: THREE.Material;
+      paw: THREE.Material;
+      pawScale?: Vec3;
+      /** 手往外撇的角度，让两只手呈八字形，不贴着身体。 */
+      splay?: number;
+    },
+  ): THREE.Group {
+    const r = opts.radius;
+    const reach = opts.reach;
+    // 臂根埋在身体内部前半段，整条臂绕 X 轴前倾约 58°，从身体前下方伸出来
+    const hand = this.group(
+      parent,
+      [opts.x, opts.y, opts.bodyZ * 0.58],
+      [-1.02, 0, side * (opts.splay ?? 0.16)],
+    );
+    this.capsule(hand, opts.fur, [0, -reach * 0.42, 0], r, reach + r * 1.4);
+    const paw = this.group(hand, [0, -reach * 0.90, 0.01]);
+    this.sphere(paw, opts.paw, [0, 0, 0], opts.pawScale ?? [r * 1.28, r * 0.92, r * 1.22], [0, 0, 0], 18);
+    this.trackLimb(hand, side, true, side * 0.5, undefined, true);
+    return hand;
+  }
+
   private buildDog(): void {
     const p = this.palette!;
     const model = this.model!;
@@ -1006,7 +1060,12 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.stubLeg(model, side * 0.40, 0.36, 0.48, 0.155, 0.26, fur, cream, side, true);
+      // 前爪手：抬到胸前、明显外露，能看清地敲键盘
+      this.frontHand(model, side, {
+        x: side * 0.30, y: 0.62, bodyZ: 0.84,
+        radius: 0.088, reach: 0.60, fur, paw: cream,
+        pawScale: [0.118, 0.082, 0.118], splay: 0.13,
+      });
       this.stubLeg(model, side * 0.40, 0.36, -0.50, 0.165, 0.26, fur, cream, side, false);
     }
 
@@ -1043,7 +1102,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.stubLeg(model, side * 0.38, 0.34, 0.46, 0.13, 0.24, socks, socks, side, true);
+      this.frontHand(model, side, {
+        x: side * 0.29, y: 0.60, bodyZ: 0.82,
+        radius: 0.082, reach: 0.58, fur, paw: socks,
+        pawScale: [0.112, 0.078, 0.112], splay: 0.12,
+      });
       this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
     }
 
@@ -1061,10 +1124,10 @@ export class IndependentSpecies3D {
     }
     this.trackHead(head);
 
-    // 蓬松大尾巴：粗管贴着身后拖，奶油尾尖
-    const tail = this.group(model, [0, 0.60, -0.58]);
-    this.tube(tail, fur, [[0, 0, 0], [0, 0.06, -0.28], [0, 0.16, -0.52], [0, 0.12, -0.70]], 0.19);
-    this.sphere(tail, pale, [0, 0.12, -0.72], [0.19, 0.21, 0.20], [0, 0, 0], 20);
+    // 蓬松大尾巴：垂在身后，末端从右后侧露出来一点（不往头上翘，避免像头饰）
+    const tail = this.group(model, [0.30, 0.46, -0.50]);
+    this.tube(tail, fur, [[0, 0, 0], [0.12, -0.02, -0.22], [0.20, 0.10, -0.40], [0.26, 0.26, -0.44]], 0.17);
+    this.sphere(tail, pale, [0.30, 0.28, -0.44], [0.17, 0.19, 0.18], [0, 0, 0], 20);
     this.trackTail(tail);
   }
 
@@ -1080,7 +1143,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.17, 0.25, black, black, side, true);
+      this.frontHand(model, side, {
+        x: side * 0.31, y: 0.64, bodyZ: 0.80,
+        radius: 0.095, reach: 0.60, fur: black, paw: black,
+        pawScale: [0.125, 0.088, 0.125], splay: 0.14,
+      });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
     }
 
@@ -1359,7 +1426,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.16, 0.25, white, patches, side, true);
+      this.frontHand(model, side, {
+        x: side * 0.26, y: 0.60, bodyZ: 0.82,
+        radius: 0.090, reach: 0.60, fur: white, paw: patches,
+        pawScale: [0.120, 0.084, 0.120], splay: 0.06,
+      });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
     }
 
@@ -1541,7 +1612,11 @@ export class IndependentSpecies3D {
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.stubLeg(model, side * 0.38, 0.32, 0.42, 0.14, 0.22, dark, dark, side, true);
+      this.frontHand(model, side, {
+        x: side * 0.27, y: 0.56, bodyZ: 0.76,
+        radius: 0.080, reach: 0.56, fur: dark, paw: dark,
+        pawScale: [0.108, 0.076, 0.108], splay: 0.12,
+      });
       this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
     }
 
