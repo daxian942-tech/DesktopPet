@@ -7634,11 +7634,11 @@
      * @param {string} [colorSpace=SRGBColorSpace] - The color space.
      * @return {Color} A reference to this color.
      */
-    setHex(hex, colorSpace = SRGBColorSpace) {
-      hex = Math.floor(hex);
-      this.r = (hex >> 16 & 255) / 255;
-      this.g = (hex >> 8 & 255) / 255;
-      this.b = (hex & 255) / 255;
+    setHex(hex2, colorSpace = SRGBColorSpace) {
+      hex2 = Math.floor(hex2);
+      this.r = (hex2 >> 16 & 255) / 255;
+      this.g = (hex2 >> 8 & 255) / 255;
+      this.b = (hex2 & 255) / 255;
       ColorManagement.colorSpaceToWorking(this, colorSpace);
       return this;
     }
@@ -7743,17 +7743,17 @@
             warn("Color: Unknown color model " + style);
         }
       } else if (m = /^\#([A-Fa-f\d]+)$/.exec(style)) {
-        const hex = m[1];
-        const size = hex.length;
+        const hex2 = m[1];
+        const size = hex2.length;
         if (size === 3) {
           return this.setRGB(
-            parseInt(hex.charAt(0), 16) / 15,
-            parseInt(hex.charAt(1), 16) / 15,
-            parseInt(hex.charAt(2), 16) / 15,
+            parseInt(hex2.charAt(0), 16) / 15,
+            parseInt(hex2.charAt(1), 16) / 15,
+            parseInt(hex2.charAt(2), 16) / 15,
             colorSpace
           );
         } else if (size === 6) {
-          return this.setHex(parseInt(hex, 16), colorSpace);
+          return this.setHex(parseInt(hex2, 16), colorSpace);
         } else {
           warn("Color: Invalid hex color " + style);
         }
@@ -7776,9 +7776,9 @@
      * @return {Color} A reference to this color.
      */
     setColorName(style, colorSpace = SRGBColorSpace) {
-      const hex = _colorKeywords[style.toLowerCase()];
-      if (hex !== void 0) {
-        this.setHex(hex, colorSpace);
+      const hex2 = _colorKeywords[style.toLowerCase()];
+      if (hex2 !== void 0) {
+        this.setHex(hex2, colorSpace);
       } else {
         warn("Color: Unknown color " + style);
       }
@@ -15215,8 +15215,8 @@
      *
      * @param {Curve} curve - The curve to add.
      */
-    add(curve) {
-      this.curves.push(curve);
+    add(curve2) {
+      this.curves.push(curve2);
     }
     /**
      * Adds a line curve to close the path.
@@ -15247,10 +15247,10 @@
       while (i < curveLengths.length) {
         if (curveLengths[i] >= d) {
           const diff = curveLengths[i] - d;
-          const curve = this.curves[i];
-          const segmentLength = curve.getLength();
+          const curve2 = this.curves[i];
+          const segmentLength = curve2.getLength();
           const u = segmentLength === 0 ? 0 : 1 - diff / segmentLength;
-          return curve.getPointAt(u, optionalTarget);
+          return curve2.getPointAt(u, optionalTarget);
         }
         i++;
       }
@@ -15297,9 +15297,9 @@
       const points = [];
       let last;
       for (let i = 0, curves = this.curves; i < curves.length; i++) {
-        const curve = curves[i];
-        const resolution = curve.isEllipseCurve ? divisions * 2 : curve.isLineCurve || curve.isLineCurve3 ? 1 : curve.isSplineCurve ? divisions * curve.points.length : divisions;
-        const pts = curve.getPoints(resolution);
+        const curve2 = curves[i];
+        const resolution = curve2.isEllipseCurve ? divisions * 2 : curve2.isLineCurve || curve2.isLineCurve3 ? 1 : curve2.isSplineCurve ? divisions * curve2.points.length : divisions;
+        const pts = curve2.getPoints(resolution);
         for (let j = 0; j < pts.length; j++) {
           const point = pts[j];
           if (last && last.equals(point)) continue;
@@ -15316,8 +15316,8 @@
       super.copy(source);
       this.curves = [];
       for (let i = 0, l = source.curves.length; i < l; i++) {
-        const curve = source.curves[i];
-        this.curves.push(curve.clone());
+        const curve2 = source.curves[i];
+        this.curves.push(curve2.clone());
       }
       this.autoClose = source.autoClose;
       this.cacheLengths = null;
@@ -15328,8 +15328,8 @@
       data.autoClose = this.autoClose;
       data.curves = [];
       for (let i = 0, l = this.curves.length; i < l; i++) {
-        const curve = this.curves[i];
-        data.curves.push(curve.toJSON());
+        const curve2 = this.curves[i];
+        data.curves.push(curve2.toJSON());
       }
       return data;
     }
@@ -15338,8 +15338,8 @@
       this.autoClose = json.autoClose;
       this.curves = [];
       for (let i = 0, l = json.curves.length; i < l; i++) {
-        const curve = json.curves[i];
-        this.curves.push(new Curves[curve.type]().fromJSON(curve));
+        const curve2 = json.curves[i];
+        this.curves.push(new Curves[curve2.type]().fromJSON(curve2));
       }
       this.cacheLengths = null;
       return this;
@@ -15393,8 +15393,8 @@
      * @return {Path} A reference to this path.
      */
     lineTo(x, y) {
-      const curve = new LineCurve(this.currentPoint.clone(), new Vector2(x, y));
-      this.curves.push(curve);
+      const curve2 = new LineCurve(this.currentPoint.clone(), new Vector2(x, y));
+      this.curves.push(curve2);
       this.currentPoint.set(x, y);
       return this;
     }
@@ -15409,12 +15409,12 @@
      * @return {Path} A reference to this path.
      */
     quadraticCurveTo(aCPx, aCPy, aX, aY) {
-      const curve = new QuadraticBezierCurve(
+      const curve2 = new QuadraticBezierCurve(
         this.currentPoint.clone(),
         new Vector2(aCPx, aCPy),
         new Vector2(aX, aY)
       );
-      this.curves.push(curve);
+      this.curves.push(curve2);
       this.currentPoint.set(aX, aY);
       return this;
     }
@@ -15431,13 +15431,13 @@
      * @return {Path} A reference to this path.
      */
     bezierCurveTo(aCP1x, aCP1y, aCP2x, aCP2y, aX, aY) {
-      const curve = new CubicBezierCurve(
+      const curve2 = new CubicBezierCurve(
         this.currentPoint.clone(),
         new Vector2(aCP1x, aCP1y),
         new Vector2(aCP2x, aCP2y),
         new Vector2(aX, aY)
       );
-      this.curves.push(curve);
+      this.curves.push(curve2);
       this.currentPoint.set(aX, aY);
       return this;
     }
@@ -15450,8 +15450,8 @@
      */
     splineThru(pts) {
       const npts = [this.currentPoint.clone()].concat(pts);
-      const curve = new SplineCurve(npts);
-      this.curves.push(curve);
+      const curve2 = new SplineCurve(npts);
+      this.curves.push(curve2);
       this.currentPoint.copy(pts[pts.length - 1]);
       return this;
     }
@@ -15529,15 +15529,15 @@
      * @return {Path} A reference to this path.
      */
     absellipse(aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation) {
-      const curve = new EllipseCurve(aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation);
+      const curve2 = new EllipseCurve(aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation);
       if (this.curves.length > 0) {
-        const firstPoint = curve.getPoint(0);
+        const firstPoint = curve2.getPoint(0);
         if (!firstPoint.equals(this.currentPoint)) {
           this.lineTo(firstPoint.x, firstPoint.y);
         }
       }
-      this.curves.push(curve);
-      const lastPoint = curve.getPoint(1);
+      this.curves.push(curve2);
+      const lastPoint = curve2.getPoint(1);
       this.currentPoint.copy(lastPoint);
       return this;
     }
@@ -32097,6 +32097,8 @@ void main() {
     palette = null;
     /** 纯色材质：和原版猫咪一样用 MeshBasicMaterial，按颜色缓存，全物种共用 */
     materials = /* @__PURE__ */ new Map();
+    /** 淡轮廓壳材质：同色系略压暗 + BackSide，只露边缘一圈，按颜色缓存共享 */
+    outlineMaterials = /* @__PURE__ */ new Map();
     /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
     geoCache = /* @__PURE__ */ new Map();
     groundMat = null;
@@ -32341,6 +32343,20 @@ void main() {
       this.materials.set(key, mat);
       return mat;
     }
+    /**
+     * 淡淡的同色系轮廓壳：用略压暗的底色 + BackSide，放大一点点只露边缘一圈。
+     * 不是黑描边（用户明确不要黑边），只是让纯色块在浅背景上干净收边，和 2D 的淡边一致。
+     */
+    outlineMaterial(color) {
+      const edge = color.clone().multiplyScalar(0.88);
+      const key = `o:${edge.getHexString()}`;
+      const cached = this.outlineMaterials.get(key);
+      if (cached) return cached;
+      const mat = new MeshBasicMaterial({ color: edge, side: BackSide });
+      mat.userData.shared = true;
+      this.outlineMaterials.set(key, mat);
+      return mat;
+    }
     /** 共享几何：同一细分参数的球 / 胶囊只创建一次，并标记为 shared 防止被 dispose */
     cachedGeometry(key, make) {
       let geometry = this.geoCache.get(key);
@@ -32442,9 +32458,9 @@ void main() {
       return this.mesh(parent, geometry, mat, position, scale, rotation);
     }
     tube(parent, mat, points, radius, position = [0, 0, 0]) {
-      const curve = new CatmullRomCurve3(points.map((p) => new Vector3(...p)), false, "centripetal");
+      const curve2 = new CatmullRomCurve3(points.map((p) => new Vector3(...p)), false, "centripetal");
       const key = `tube:${radius.toFixed(3)}:${points.map((p) => p.map((v) => v.toFixed(2)).join(",")).join("|")}`;
-      const geometry = this.cachedGeometry(key, () => new TubeGeometry(curve, 12, radius, 6, false));
+      const geometry = this.cachedGeometry(key, () => new TubeGeometry(curve2, 12, radius, 6, false));
       return this.mesh(parent, geometry, mat, position);
     }
     track(node) {
@@ -32455,10 +32471,29 @@ void main() {
         scale: node.scale.clone()
       };
     }
+    /**
+     * 给主体色块加一圈淡淡的同色系轮廓壳：复制底座球的几何，用 BackSide 略放大，
+     * 只在剪影边缘露出一条细边。不是黑描边，和 2D 的淡边语言一致。
+     */
+    addSoftOutline(node) {
+      const base = node.children.find((c) => c instanceof Mesh);
+      if (!base || !(base.material instanceof MeshBasicMaterial)) return;
+      const shell = this.mesh(
+        node,
+        base.geometry,
+        this.outlineMaterial(base.material.color),
+        [base.position.x, base.position.y, base.position.z],
+        [base.scale.x * 1.035, base.scale.y * 1.035, base.scale.z * 1.035],
+        [base.rotation.x, base.rotation.y, base.rotation.z]
+      );
+      shell.renderOrder = -1;
+    }
     trackBody(node) {
+      this.addSoftOutline(node);
       this.body = this.track(node);
     }
     trackHead(node) {
+      this.addSoftOutline(node);
       this.head = this.track(node);
     }
     trackTail(node) {
@@ -35292,6 +35327,598 @@ void main() {
   };
   var catAudio = new CatAudio();
 
+  // src/chibi2d.ts
+  function hex(c, fallback) {
+    if (!c) return fallback;
+    const v = String(c).trim();
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)) return v;
+    if (/^rgba?\(/i.test(v)) return v;
+    return fallback;
+  }
+  function shift(c, amt) {
+    const m = c.match(/^#([0-9a-f]{6})$/i);
+    if (!m) return c;
+    const h = m[1];
+    const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
+    return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+  }
+  function fillEllipse(ctx, x, y, rx, ry, color, rot = 0) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), rot, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  function fillSoftEdge(ctx, x, y, rx, ry, color) {
+    fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
+    fillEllipse(ctx, x, y, rx, ry, color);
+  }
+  function fillPoly(ctx, pts, color) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  function roundLine(ctx, color, w, pts) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function curve(ctx, color, w, draw) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    draw();
+    ctx.stroke();
+    ctx.restore();
+  }
+  function chibiEye(p, x, y, rx, ry, iris, sclera, pupilScale = 0.5) {
+    const { ctx, ink } = p;
+    if (p.blink > 0.45 || p.squint > 0.55) {
+      curve(ctx, ink, Math.max(5, rx * 0.28), () => {
+        ctx.moveTo(x - rx, y);
+        ctx.quadraticCurveTo(x, y + ry * 0.75, x + rx, y);
+      });
+      return;
+    }
+    if (p.expression === "happy") {
+      curve(ctx, ink, Math.max(5, rx * 0.3), () => {
+        ctx.moveTo(x - rx, y + ry * 0.18);
+        ctx.quadraticCurveTo(x, y - ry * 1.15, x + rx, y + ry * 0.18);
+      });
+      return;
+    }
+    if (p.expression === "love") {
+      const r = Math.max(rx, ry) * 0.95;
+      ctx.beginPath();
+      ctx.moveTo(x, y + r * 0.9);
+      ctx.bezierCurveTo(x - r * 1.5, y - r * 0.15, x - r * 0.7, y - r * 1.3, x, y - r * 0.42);
+      ctx.bezierCurveTo(x + r * 0.7, y - r * 1.3, x + r * 1.5, y - r * 0.15, x, y + r * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = "#e56f7f";
+      ctx.fill();
+      return;
+    }
+    if (p.expression === "surprised") {
+      fillEllipse(ctx, x, y, rx * 1.18, ry * 1.24, sclera ? "#ffffff" : iris);
+      fillEllipse(ctx, x, y, rx, ry, iris);
+      fillEllipse(ctx, x, y, rx * pupilScale, ry * pupilScale * 1.12, ink);
+      fillEllipse(ctx, x - rx * 0.3, y - ry * 0.32, rx * 0.32, ry * 0.32, "#ffffff");
+      return;
+    }
+    if (sclera) fillEllipse(ctx, x, y, rx * 1.24, ry * 1.24, "#ffffff");
+    fillEllipse(ctx, x, y, rx, ry, iris);
+    fillEllipse(ctx, x, y, rx * pupilScale, ry * pupilScale * 1.12, ink);
+    if (p.s.eyeCatchlight !== false) {
+      fillEllipse(ctx, x - rx * 0.3, y - ry * 0.32, rx * 0.31, ry * 0.31, "#ffffff");
+      fillEllipse(ctx, x + rx * 0.34, y + ry * 0.3, rx * 0.15, ry * 0.15, "#ffffff");
+    }
+    if (p.expression === "worried") {
+      const side = x < 0 ? -1 : 1;
+      roundLine(ctx, ink, Math.max(4, rx * 0.24), [[x + side * rx, y - ry * 0.7], [x - side * rx * 0.85, y - ry * 1.1]]);
+    }
+  }
+  function chibiMouth(p, y, w, grin = true, arc = 0.34) {
+    curve(p.ctx, p.ink, Math.max(4, w * 0.14), () => {
+      p.ctx.moveTo(-w, y);
+      p.ctx.quadraticCurveTo(0, y + (grin ? w * arc : 3), w, y);
+    });
+  }
+  function drawLegs(p, cfg) {
+    const { ctx } = p;
+    const lx = cfg.legX ?? 60;
+    const ly = cfg.legY ?? 248;
+    const lr = cfg.legR ?? 46;
+    [-1, 1].forEach((side) => {
+      const x = side * lx;
+      roundLine(ctx, cfg.bodyColor || p.secondary, lr * 1.15, [[x, ly - 24], [x, ly + 46]]);
+      fillEllipse(ctx, x, ly + 46, lr * 0.86, lr * 0.44, cfg.pawColor || cfg.bodyColor || p.secondary);
+      if (cfg.footClaw) {
+        for (let i = -1; i <= 1; i++) {
+          fillEllipse(ctx, x + i * lr * 0.4, ly + 46 + lr * 0.24, lr * 0.13, lr * 0.13, cfg.footClaw);
+        }
+      }
+    });
+  }
+  function drawArms(p, cfg) {
+    const { ctx } = p;
+    const reach = Math.max(0, Math.min(1, p.reach));
+    const ax = cfg.armX ?? 96;
+    const ay = cfg.armY ?? 92;
+    const aw = cfg.armR ?? 30;
+    const body = cfg.bodyColor || p.secondary;
+    [-1, 1].forEach((side) => {
+      const sx = side * ax;
+      const sy = ay;
+      const restX = side * (cfg.hug ? 26 : 50);
+      const restY = ay + (cfg.hug ? 46 : 92);
+      const typeX = side * (ax + 18);
+      const typeY = 282;
+      const px2 = restX + (typeX - restX) * reach;
+      let py2 = restY + (typeY - restY) * reach;
+      const tap = (side < 0 ? p.tapLeft : p.tapRight) * reach * 15;
+      py2 -= tap;
+      roundLine(ctx, body, aw * 1.05, [[sx, sy], [(sx + px2) / 2, (sy + py2) / 2 + 16], [px2, py2]]);
+      fillEllipse(ctx, px2, py2, aw * 0.82, aw * 0.68, cfg.pawColor || body);
+      if (cfg.claw) {
+        for (let i = -1; i <= 1; i++) {
+          fillEllipse(ctx, px2 + i * aw * 0.44, py2 + aw * 0.42, aw * 0.15, aw * 0.16, cfg.claw);
+        }
+      }
+    });
+  }
+  function drawChibi(p, cfg) {
+    const { ctx } = p;
+    const headColor = cfg.headColor || p.fur;
+    const bodyColor = cfg.bodyColor || p.secondary;
+    if (cfg.tail) cfg.tail(p);
+    drawLegs(p, cfg);
+    fillSoftEdge(ctx, 0, cfg.bodyY, cfg.bodyRx, cfg.bodyRy, bodyColor);
+    if (cfg.bellyColor) {
+      ctx.save();
+      const wob = 1 + Math.sin(p.t * 2.5) * 0.012;
+      ctx.translate(0, cfg.bellyY ?? cfg.bodyY + 20);
+      ctx.scale(wob, 2 - wob);
+      fillEllipse(ctx, 0, 0, cfg.bellyRx ?? cfg.bodyRx * 0.66, cfg.bellyRy ?? cfg.bodyRy * 0.74, cfg.bellyColor);
+      ctx.restore();
+    }
+    drawArms(p, cfg);
+    ctx.save();
+    ctx.translate(0, 26);
+    if (cfg.ears) cfg.ears(p);
+    fillSoftEdge(ctx, 0, cfg.headY, cfg.headRx, cfg.headRy, headColor);
+    if (cfg.markings) cfg.markings(p);
+    if (cfg.crown) cfg.crown(p);
+    if (cfg.blush) {
+      [-1, 1].forEach((side) => fillEllipse(ctx, side * cfg.eyeX * 1.45, cfg.eyeY + cfg.eyeRy * 1.55, cfg.eyeRx * 0.66, cfg.eyeRy * 0.3, cfg.blush));
+    }
+    [-1, 1].forEach((side) => chibiEye(
+      p,
+      side * cfg.eyeX,
+      cfg.eyeY,
+      cfg.eyeRx,
+      cfg.eyeRy,
+      cfg.iris || p.s.eyeColorTop || "#2c2a30",
+      cfg.sclera ?? false,
+      cfg.pupil ?? 0.5
+    ));
+    if (cfg.face) cfg.face(p);
+    chibiMouth(p, cfg.mouthY ?? cfg.eyeY + cfg.eyeRy * 2.05, cfg.mouthW ?? cfg.eyeRx * 1.1, true, cfg.smileCurve ?? 0.34);
+    ctx.restore();
+  }
+  function configFor(p, species) {
+    const s = p.s;
+    const fur = p.fur;
+    const pale = s.bellyBibColor || "#fff3e0";
+    const ink = p.ink;
+    switch (species) {
+      case "cat":
+        return {
+          headRx: 138,
+          headRy: 126,
+          headY: -96,
+          bodyRx: 104,
+          bodyRy: 108,
+          bodyY: 132,
+          bellyColor: pale,
+          eyeX: 48,
+          eyeY: -100,
+          eyeRx: 26,
+          eyeRy: 30,
+          iris: s.eyeColorTop || "#c8e64a",
+          pupil: 0.34,
+          ears: (q) => [-1, 1].forEach((side) => fillPoly(q.ctx, [
+            [side * 54, -182],
+            [side * 112, -182],
+            [side * 82, -268]
+          ], fur)),
+          tail: (q) => curve(q.ctx, fur, 34, () => {
+            q.ctx.moveTo(96, 190);
+            q.ctx.quadraticCurveTo(210, 150, 178, 30);
+          }),
+          face: (q) => {
+            fillPoly(q.ctx, [[-12, -44], [12, -44], [0, -28]], q.s.noseColor || "#e08f9c");
+          }
+        };
+      case "dog":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 142,
+          headRy: 130,
+          headY: -94,
+          bodyRx: 112,
+          bodyRy: 106,
+          bodyY: 134,
+          bellyColor: pale,
+          eyeX: 50,
+          eyeY: -100,
+          eyeRx: 26,
+          eyeRy: 30,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 118, -104, 38, 82, q.s.earOuterColor || q.secondary, side * 0.22)),
+          tail: (q) => curve(q.ctx, q.secondary, 30, () => {
+            q.ctx.moveTo(100, 176);
+            q.ctx.quadraticCurveTo(196, 136, 168, 62);
+          }),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -38, 46, 36, pale);
+            fillEllipse(q.ctx, 0, -52, 20, 14, q.s.noseColor || "#2b211d");
+            fillEllipse(q.ctx, 0, -14, 15, 20, "#ef8e9e");
+          }
+        };
+      case "fox":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 136,
+          headRy: 118,
+          headY: -98,
+          bodyRx: 108,
+          bodyRy: 100,
+          bodyY: 140,
+          bellyColor: pale,
+          eyeX: 48,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 27,
+          iris: s.eyeColorTop || "#d8a23c",
+          pupil: 0.28,
+          ears: (q) => [-1, 1].forEach((side) => fillPoly(q.ctx, [
+            [side * 52, -172],
+            [side * 122, -186],
+            [side * 90, -272]
+          ], fur)),
+          tail: (q) => {
+            q.ctx.save();
+            q.ctx.translate(112, 168);
+            q.ctx.rotate(0.35);
+            fillEllipse(q.ctx, 62, 0, 92, 46, fur);
+            fillEllipse(q.ctx, 136, -8, 34, 30, "#fff5e6");
+            q.ctx.restore();
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -34, 40, 25, pale)
+        };
+      case "panda":
+        return {
+          headRx: 142,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 112,
+          bodyRy: 110,
+          bodyY: 132,
+          eyeX: 52,
+          eyeY: -104,
+          eyeRx: 27,
+          eyeRy: 31,
+          pupil: 0.44,
+          sclera: true,
+          iris: "#3c3c44",
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 104, -192, 40, 42, "#202024")),
+          markings: (q) => {
+            [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 52, -104, 36, 38, "#202024"));
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -40, 15, 11, "#202024")
+        };
+      case "bunny":
+        return {
+          headRx: 132,
+          headRy: 126,
+          headY: -100,
+          bodyRx: 100,
+          bodyRy: 108,
+          bodyY: 136,
+          bellyColor: pale,
+          eyeX: 46,
+          eyeY: -106,
+          eyeRx: 24,
+          eyeRy: 28,
+          iris: "#8a6a67",
+          pupil: 0.48,
+          ears: (q) => [-1, 1].forEach((side) => {
+            fillEllipse(q.ctx, side * 52, -264, 25, 92, fur, side * 0.1);
+            fillEllipse(q.ctx, side * 52, -264, 11, 72, "#f3b8c4", side * 0.1);
+          }),
+          tail: (q) => fillEllipse(q.ctx, 92, 196, 32, 32, "#fffaf4"),
+          blush: "#f3b8c4",
+          face: (q) => fillEllipse(q.ctx, 0, -42, 11, 8, "#d98a9a")
+        };
+      case "penguin":
+        return {
+          headRx: 130,
+          headRy: 122,
+          headY: -96,
+          bodyRx: 104,
+          bodyRy: 120,
+          bodyY: 136,
+          bellyColor: "#ffffff",
+          bellyRx: 70,
+          bellyRy: 100,
+          bellyY: 146,
+          eyeX: 46,
+          eyeY: -104,
+          eyeRx: 23,
+          eyeRy: 26,
+          pupil: 0.5,
+          face: (q) => fillPoly(q.ctx, [[-22, -48], [22, -48], [0, -16]], "#f5a623"),
+          pawColor: "#f5a623"
+        };
+      case "frog":
+        return {
+          headRx: 150,
+          headRy: 112,
+          headY: -92,
+          bodyRx: 116,
+          bodyRy: 100,
+          bodyY: 140,
+          bellyColor: "#c9e89b",
+          bellyRx: 74,
+          bellyRy: 72,
+          eyeX: 62,
+          eyeY: -156,
+          eyeRx: 30,
+          eyeRy: 32,
+          iris: "#f5f5e8",
+          pupil: 0.34,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 62, -156, 37, 39, fur)),
+          blush: "#f3a8b6",
+          face: (q) => {
+            curve(q.ctx, "#3d7a35", 4, () => {
+              q.ctx.moveTo(-34, -52);
+              q.ctx.quadraticCurveTo(0, -38, 34, -52);
+            });
+          }
+        };
+      case "chiikawa":
+        return {
+          headRx: 140,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 98,
+          bodyRy: 100,
+          bodyY: 136,
+          eyeX: 44,
+          eyeY: -100,
+          eyeRx: 16,
+          eyeRy: 18,
+          iris: "#2c2a30",
+          pupil: 0.62,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 100, -178, 24, 25, fur)),
+          blush: "#f6b8c4",
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -46, 9, 6, "#c48f9a");
+            q.ctx.fillStyle = "#c48f9a";
+            q.ctx.font = "bold 14px sans-serif";
+            q.ctx.fillText("\u03C9", -8, -30);
+          }
+        };
+      case "grasscow":
+        return {
+          bodyColor: "#ffffff",
+          headColor: "#ffffff",
+          headRx: 140,
+          headRy: 120,
+          headY: -94,
+          bodyRx: 116,
+          bodyRy: 104,
+          bodyY: 138,
+          eyeX: 50,
+          eyeY: -104,
+          eyeRx: 24,
+          eyeRy: 27,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => {
+            fillEllipse(q.ctx, side * 130, -136, 34, 22, "#2c2c30", side * 0.3);
+            fillEllipse(q.ctx, side * 84, -196, 16, 24, "#e8d6a8");
+          }),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -38, 46, 34, "#f2a9b8");
+            [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 17, -42, 7, 6, "#b86c7c"));
+            fillEllipse(q.ctx, 0, -186, 34, 24, "#2c2c30");
+          }
+        };
+      case "milkdragon":
+        return {
+          // 按用户参考图：亮黄宽圆头 + 橙色身体 + 白圈墨绿眼 + 粉白大肚皮 + 抱胸臂
+          headColor: s.furColor || "#ffc233",
+          bodyColor: s.furSecondaryColor || "#f5a623",
+          headRx: 168,
+          headRy: 138,
+          headY: -100,
+          bodyRx: 112,
+          bodyRy: 104,
+          bodyY: 142,
+          bellyColor: "#fff1ef",
+          bellyRx: 80,
+          bellyRy: 88,
+          bellyY: 158,
+          eyeX: 60,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 28,
+          iris: "#2f6b46",
+          sclera: true,
+          pupil: 0.54,
+          armX: 106,
+          armY: 78,
+          armR: 34,
+          hug: true,
+          pawColor: s.furSecondaryColor || "#f5a623",
+          claw: "#8a7466",
+          legX: 62,
+          legY: 258,
+          legR: 48,
+          footClaw: "#8a7466",
+          mouthY: -22,
+          mouthW: 30,
+          smileCurve: 0.62
+          // 参考图胸前的小灰褐爪尖由 drawArms 的 claw 画在掌上，不再在脸上叠一排点
+        };
+      case "capybara":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 138,
+          headRy: 118,
+          headY: -92,
+          bodyRx: 116,
+          bodyRy: 104,
+          bodyY: 140,
+          bellyColor: pale,
+          eyeX: 50,
+          eyeY: -100,
+          eyeRx: 23,
+          eyeRy: 25,
+          pupil: 0.48,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 112, -168, 26, 26, fur)),
+          crown: (q) => {
+            fillEllipse(q.ctx, 0, -238, 30, 28, "#f28c28");
+            fillEllipse(q.ctx, 4, -258, 9, 16, "#6fa84a");
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -34, 34, 26, "#f2a94a")
+        };
+      case "loopy":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 142,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 102,
+          bodyRy: 106,
+          bodyY: 138,
+          bellyColor: "#ffd3e0",
+          bellyRx: 68,
+          bellyRy: 80,
+          eyeX: 48,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 29,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 116, -172, 30, 32, q.secondary)),
+          crown: (q) => fillPoly(q.ctx, [[-38, -212], [0, -188], [-38, -164]], "#7fc4e8"),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -26, 18, 12, "#ffffff");
+            q.ctx.fillStyle = "#c9527a";
+            q.ctx.fillRect(-6, -34, 12, 12);
+          },
+          blush: "#f49ab6"
+        };
+      case "bubu":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 138,
+          headRy: 124,
+          headY: -96,
+          bodyRx: 106,
+          bodyRy: 106,
+          bodyY: 138,
+          bellyColor: "#e9cba8",
+          bellyRx: 66,
+          bellyRy: 76,
+          eyeX: 48,
+          eyeY: -102,
+          eyeRx: 25,
+          eyeRy: 26,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 104, -182, 32, 34, q.secondary)),
+          crown: (q) => {
+            curve(q.ctx, "#7a5844", 3.5, () => {
+              q.ctx.moveTo(22, -214);
+              q.ctx.lineTo(30, -178);
+              q.ctx.lineTo(20, -150);
+            });
+          },
+          face: (q) => {
+            fillPoly(q.ctx, [[-42, -8], [0, 16], [42, -8], [0, 4]], "#f0b429");
+            fillEllipse(q.ctx, 0, -36, 12, 9, "#4a3528");
+          }
+        };
+    }
+  }
+  function drawChibiSpecies(ctx, skin, species, t, expression, blink, squint, tapLeft, tapRight, reach) {
+    const s = skin;
+    const fur = hex(s.furColor, "#f4ece6");
+    const p = {
+      ctx,
+      s,
+      fur,
+      secondary: hex(s.furSecondaryColor || s.armColor, shift(fur, -18)),
+      belly: hex(s.bellyBibColor || s.muzzleColor, "#fff3e0"),
+      ink: hex(s.mouthColor, "#3a302c"),
+      t,
+      expression,
+      blink,
+      squint,
+      tapLeft,
+      tapRight,
+      reach
+    };
+    drawChibi(p, configFor(p, species));
+  }
+
+  // src/speciesRenderer2d.ts
+  function chibi(species) {
+    return (p) => drawChibiSpecies(
+      p.ctx,
+      p.s,
+      species,
+      p.t,
+      p.expression,
+      p.blink,
+      p.squint,
+      p.tapLeft,
+      p.tapRight,
+      p.reach
+    );
+  }
+  var RENDERERS = {
+    cat: chibi("cat"),
+    dog: chibi("dog"),
+    fox: chibi("fox"),
+    panda: chibi("panda"),
+    bunny: chibi("bunny"),
+    penguin: chibi("penguin"),
+    frog: chibi("frog"),
+    chiikawa: chibi("chiikawa"),
+    grasscow: chibi("grasscow"),
+    milkdragon: chibi("milkdragon"),
+    capybara: chibi("capybara"),
+    loopy: chibi("loopy"),
+    bubu: chibi("bubu")
+  };
+
   // src/catEngine.ts
   var DEFAULT_TAIL_KEY_IDS = ["enter", "space", "bs", "esc"];
 
@@ -35313,9 +35940,9 @@ void main() {
       const r = Math.min(255, parseInt(m[1], 10));
       const g = Math.min(255, parseInt(m[2], 10));
       const b = Math.min(255, parseInt(m[3], 10));
-      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+      const hex2 = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
       const opacity = m[4] !== void 0 ? Math.max(0.15, Math.min(1, parseFloat(m[4]))) : void 0;
-      return { hex, opacity };
+      return { hex: hex2, opacity };
     }
     return { hex: fallbackHex };
   }
@@ -36046,8 +36673,8 @@ void main() {
       });
     }
     applyPalette(p, spots = []) {
-      const setColor = (key, hex) => {
-        this.uniforms[key].value.set(hex);
+      const setColor = (key, hex2) => {
+        this.uniforms[key].value.set(hex2);
       };
       setColor("uFur", p.fur);
       setColor("uLight", p.light);
@@ -39738,8 +40365,8 @@ void main() {
       this.desk.setTheme(theme);
       this.syncDeskFloorShadows();
     }
-    setChromaKeyBg(hex) {
-      const normalized = typeof hex === "string" && hex.trim() ? hex.trim() : null;
+    setChromaKeyBg(hex2) {
+      const normalized = typeof hex2 === "string" && hex2.trim() ? hex2.trim() : null;
       this.chromaKeyBg = normalized;
       this.applyChromaKeyState();
       this.wakeRendering();

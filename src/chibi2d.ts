@@ -97,9 +97,13 @@ function fillEllipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: nu
   ctx.fill();
 }
 
-/** 极浅的同色系软边：不是黑描边，只是让白色动物在浅背景上不融掉。 */
+/**
+ * 淡淡的同色系轮廓：比底色略深一点的椭圆垫在底层，露出一圈干净收边。
+ * 用填充叠加而不是 stroke，避免头/身色块交接处出现难看的交叉横线。
+ * 不是黑描边（用户明确不要黑边），只是同色压暗的版本。
+ */
 function fillSoftEdge(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string): void {
-  fillEllipse(ctx, x, y, rx + 3.5, ry + 3.5, shift(color, -12));
+  fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
   fillEllipse(ctx, x, y, rx, ry, color);
 }
 

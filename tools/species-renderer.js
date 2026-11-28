@@ -199,7 +199,7 @@
     ctx.fill();
   }
   function fillSoftEdge(ctx, x, y, rx, ry, color) {
-    fillEllipse(ctx, x, y, rx + 3.5, ry + 3.5, shift(color, -12));
+    fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
     fillEllipse(ctx, x, y, rx, ry, color);
   }
   function fillPoly(ctx, pts, color) {

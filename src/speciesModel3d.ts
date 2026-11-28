@@ -193,6 +193,8 @@ export class IndependentSpecies3D {
   private palette: Palette | null = null;
   /** 纯色材质：和原版猫咪一样用 MeshBasicMaterial，按颜色缓存，全物种共用 */
   private readonly materials = new Map<string, THREE.MeshBasicMaterial>();
+  /** 淡轮廓壳材质：同色系略压暗 + BackSide，只露边缘一圈，按颜色缓存共享 */
+  private readonly outlineMaterials = new Map<string, THREE.MeshBasicMaterial>();
   /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
   private readonly geoCache = new Map<string, THREE.BufferGeometry>();
   private groundMat: THREE.MeshBasicMaterial | null = null;
@@ -522,6 +524,21 @@ export class IndependentSpecies3D {
     return mat;
   }
 
+  /**
+   * 淡淡的同色系轮廓壳：用略压暗的底色 + BackSide，放大一点点只露边缘一圈。
+   * 不是黑描边（用户明确不要黑边），只是让纯色块在浅背景上干净收边，和 2D 的淡边一致。
+   */
+  private outlineMaterial(color: THREE.Color): THREE.MeshBasicMaterial {
+    const edge = color.clone().multiplyScalar(0.88);
+    const key = `o:${edge.getHexString()}`;
+    const cached = this.outlineMaterials.get(key);
+    if (cached) return cached;
+    const mat = new THREE.MeshBasicMaterial({ color: edge, side: THREE.BackSide });
+    mat.userData.shared = true;
+    this.outlineMaterials.set(key, mat);
+    return mat;
+  }
+
   /** 共享几何：同一细分参数的球 / 胶囊只创建一次，并标记为 shared 防止被 dispose */
   private cachedGeometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
     let geometry = this.geoCache.get(key);
@@ -707,11 +724,31 @@ export class IndependentSpecies3D {
     };
   }
 
+  /**
+   * 给主体色块加一圈淡淡的同色系轮廓壳：复制底座球的几何，用 BackSide 略放大，
+   * 只在剪影边缘露出一条细边。不是黑描边，和 2D 的淡边语言一致。
+   */
+  private addSoftOutline(node: THREE.Object3D): void {
+    const base = node.children.find((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+    if (!base || !(base.material instanceof THREE.MeshBasicMaterial)) return;
+    const shell = this.mesh(
+      node,
+      base.geometry,
+      this.outlineMaterial(base.material.color),
+      [base.position.x, base.position.y, base.position.z],
+      [base.scale.x * 1.035, base.scale.y * 1.035, base.scale.z * 1.035],
+      [base.rotation.x, base.rotation.y, base.rotation.z],
+    );
+    shell.renderOrder = -1;
+  }
+
   private trackBody(node: THREE.Object3D): void {
+    this.addSoftOutline(node);
     this.body = this.track(node);
   }
 
   private trackHead(node: THREE.Object3D): void {
+    this.addSoftOutline(node);
     this.head = this.track(node);
   }
 
