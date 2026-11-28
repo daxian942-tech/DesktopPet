@@ -26,16 +26,22 @@
         if (typeof window.showPet !== 'function') { setTimeout(ready, 40); return; }
         window.showPet(pet);
         if (t === null && !mood && !typing) return;
-        function seek() {
-          if (!window.petEngine) { setTimeout(seek, 40); return; }
-          if (t !== null) window.petEngine.elapsed = parseFloat(t);
-          window.petEngine.lastFrameMs = performance.now();
-          if (mood) window.petEngine.triggerCareMood(mood, 60);
-          if (typing) {
-            window.petEngine.paws.L.down = typing === 'right' ? false : true;
-            window.petEngine.paws.R.down = typing === 'left' ? false : true;
-          }
+      function seek() {
+        if (!window.petEngine) { setTimeout(seek, 40); return; }
+        if (t !== null) window.petEngine.elapsed = parseFloat(t);
+        window.petEngine.lastFrameMs = performance.now();
+        if (mood) window.petEngine.triggerCareMood(mood, 60);
+        if (typing) {
+          window.petEngine.paws.L.down = typing === 'right' ? false : true;
+          window.petEngine.paws.R.down = typing === 'left' ? false : true;
         }
+        // 带 t 参数 = 确定性截图：渲染一两帧到目标时刻后立即冻结画面
+        if (t !== null) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () { window.petEngine.stop(); });
+          });
+        }
+      }
         seek();
       }
       ready();

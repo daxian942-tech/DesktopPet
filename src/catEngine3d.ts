@@ -682,6 +682,9 @@ export class KuroCatEngine3D {
   private speciesTailMul = 1;
   private speciesEarsVisible = true;
   private speciesTailVisible = true;
+  // 猫专属的尾巴/手臂/爪子是直接 scene.add 的，不受 catRoot.visible 管辖。
+  // 切到其它物种时必须显式隐藏，否则会在新动物旁残留一条两段式猫尾 + 一对猫爪。
+  private speciesIsCat = true;
   // Frog bulging eyes: real 3D bulbs on top of the head (face patches barely
   // show when the head curves over the top).
   private readonly frogEyeBulbs: Array<{ group: THREE.Group; s: -1 | 1 }> = [];
@@ -2865,6 +2868,7 @@ export class KuroCatEngine3D {
     const dt = Math.min(0.05, Math.max(0.001, (nowMs - this.lastFrameMs) / 1000));
     this.lastFrameMs = nowMs;
     this.update(dt);
+    this.syncCatOnlyVisibility();
     this.renderer.render(this.scene, this.camera);
 
     if (this.rafId !== frameId) return;
@@ -2946,11 +2950,34 @@ export class KuroCatEngine3D {
     this.careMoodUntil = this.elapsed + durationSec;
   }
 
+  /**
+   * 猫专属部件门控：tailLimb / arms[].limb / arms[].paw / angerSprite 都是
+   * createCleanLimb(this.scene, ...) 或 this.scene.add(...) 直接挂到场景上的，
+   * catRoot.visible 管不到它们。旧版所有物种共用这一套猫建模，改成独立动物后
+   * 若不隐藏，就会在新动物右侧残留「两段式 + 圆头」的猫尾/猫爪，非常突兀。
+   * 每帧渲染前调用，保证 update() 里任何 visible 改动之后都被正确兜底。
+   */
+  private syncCatOnlyVisibility(): void {
+    const show = this.speciesIsCat;
+    if (!show) {
+      this.tailLimb.fill.mesh.visible = false;
+      for (const c of this.tailLimb.caps) c.visible = false;
+      this.angerSprite.visible = false;
+    }
+    for (const arm of this.arms) {
+      arm.limb.fill.mesh.visible = show;
+      for (const cap of arm.limb.caps) cap.visible = show;
+      arm.paw.visible = show;
+    }
+  }
+
   public setCatSkin(skin: CatSkinConfig): void {
     this.currentSkin = skin;
     const isCat = resolveSpecies(skin.species) === 'cat';
+    this.speciesIsCat = isCat;
     this.catRoot.visible = isCat;
     this.speciesModels.setSkin(skin);
+    this.syncCatOnlyVisibility();
     this.applyContourGeometry(skin);
     const p = resolveFurPalette3D(skin, this.renderStyle);
     this.currentPalette = p;
@@ -4705,7 +4732,7 @@ export class KuroCatEngine3D {
     this.tailTap.hover += (tailHoverTarget - this.tailTap.hover) * approach(34, dt);
 
     const fluffyMul = this.tailFluffy ? 1.38 : 1.0;
-    const showTail = peek < 0.5 && this.speciesTailVisible;
+    const showTail = this.speciesIsCat && peek < 0.5 && this.speciesTailVisible;
     this.tailLimb.fill.mesh.visible = showTail;
     for (const c of this.tailLimb.caps) c.visible = showTail;
     if (showTail) {

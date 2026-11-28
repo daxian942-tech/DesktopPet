@@ -92,7 +92,7 @@ const QUADRUPED_YAW: Partial<Record<NonCatSpecies, number>> = {
   dog: 0.82,
   fox: 0.78,
   panda: 0.74,
-  bunny: 0.38,
+  // 兔子已改为正面坐墩造型，不再需要 3/4 偏航
   // The reference is a front-facing shocked face, not a side profile.
   grasscow: 0.10,
   // Lulu's huge orange muzzle is the whole character - keep it facing forward.
@@ -714,7 +714,7 @@ export class IndependentSpecies3D {
 
     // 前肢：直立动物把爪子抬到嘴边（捧着吃），四足动物前腿微屈
     const upright = sp === 'milkdragon' || sp === 'chiikawa' || sp === 'loopy'
-      || sp === 'bubu' || sp === 'penguin' || sp === 'cat';
+      || sp === 'bubu' || sp === 'penguin' || sp === 'bunny' || sp === 'cat';
     for (const limb of this.limbs) {
       if (!limb.front) continue;
       if (upright) {
@@ -969,40 +969,64 @@ export class IndependentSpecies3D {
     }
   }
 
+  /**
+   * 圆墩短腿：胖胶囊大半埋进身体，只露一小截 + 椭圆脚掌。
+   * Q 版团子的标准腿——没有关节球、没有细棍感，落地像一坨年糕。
+   */
+  private stubLeg(
+    parent: THREE.Object3D,
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    visible: number,
+    legMat: THREE.Material,
+    footMat: THREE.Material,
+    side: -1 | 1,
+    front: boolean,
+    footScale: Vec3 = [radius * 1.05, radius * 0.5, radius * 1.4],
+  ): THREE.Group {
+    const leg = this.group(parent, [x, y, z]);
+    this.capsule(leg, legMat, [0, -visible * 0.45, 0], radius, visible + radius * 1.1);
+    this.sphere(leg, footMat, [0, -visible, 0.05], footScale, [0, 0, 0], 18);
+    this.trackLimb(leg, side, front, (front ? 0 : Math.PI) + side * 0.6);
+    return leg;
+  }
+
   private buildDog(): void {
     const p = this.palette!;
     const model = this.model!;
     const fur = this.material(p.fur);
     const cream = this.material(p.cream);
-    const dark = this.material(tint(p.fur, -0.25));
 
-    const body = this.group(model, [0, 0.98, -0.05]);
-    this.sphere(body, fur, [0, 0, 0], [0.60, 0.43, 0.82]);
-    this.sphere(body, cream, [0, -0.10, 0.70], [0.38, 0.30, 0.20]);
+    // Q 版柴犬：矮墩面包身 + 大圆头，短粗腿半埋进身体
+    const body = this.group(model, [0, 0.72, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.62, 0.52, 0.84]);
+    this.sphere(body, cream, [0, -0.10, 0.58], [0.36, 0.27, 0.30]);
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.leg(model, side * 0.40, 0.48, 0.66, 0.115, fur, cream, side, true);
-      this.leg(model, side * 0.40, -0.52, 0.66, 0.13, fur, cream, side, false);
+      this.stubLeg(model, side * 0.40, 0.36, 0.48, 0.155, 0.26, fur, cream, side, true);
+      this.stubLeg(model, side * 0.40, 0.36, -0.50, 0.165, 0.26, fur, cream, side, false);
     }
 
-    const head = this.group(model, [0, 1.40, 0.65]);
-    this.sphere(head, fur, [0, 0, 0], [0.47, 0.42, 0.43]);
-    this.sphere(head, cream, [0, -0.13, 0.36], [0.30, 0.20, 0.32]);
-    this.sphere(head, this.material(p.nose, 0.40), [0, -0.06, 0.655], [0.115, 0.075, 0.065], [0, 0, 0], 18);
-    this.smile(head, [0, -0.22, 0.625], 0.11, this.material(p.mouth));
+    const head = this.group(model, [0, 1.30, 0.56]);
+    this.sphere(head, fur, [0, 0, 0], [0.55, 0.51, 0.51]);
+    this.sphere(head, cream, [0, -0.16, 0.38], [0.30, 0.19, 0.26]);
+    this.sphere(head, this.material(p.nose, 0.40), [0, -0.12, 0.62], [0.095, 0.065, 0.055], [0, 0, 0], 16);
+    this.smile(head, [0, -0.26, 0.54], 0.10, this.material(p.mouth));
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.19, 0.085, 0.395], 0.073);
-      this.sphere(head, dark, [side * 0.19, 0.205, 0.385], [0.075, 0.032, 0.025], [0, 0, -side * 0.10], 14);
-      const ear = this.group(head, [side * 0.40, 0.17, -0.035], [0.08, 0, side * 0.12]);
-      this.capsule(ear, this.material(p.ear), [side * 0.035, -0.20, 0], 0.14, 0.49, [1.0, 1.0, 0.70], [0, 0, side * 0.16]);
+      this.eye(head, [side * 0.21, 0.08, 0.47], 0.078);
+      const ear = this.group(head, [side * 0.35, 0.24, -0.04], [0.05, 0, side * 0.18]);
+      this.capsule(ear, this.material(p.ear), [0, 0.44, 0], 0.125, 0.42, [1, 1, 0.72], [0, 0, side * 0.10]);
       this.trackEar(ear, side);
     }
     this.trackHead(head);
 
-    const tail = this.group(model, [0, 1.08, -0.78], [0.08, 0, -0.10]);
-    this.tube(tail, fur, [[0, 0, 0], [0.05, 0.22, -0.15], [0.13, 0.44, -0.13], [0.17, 0.56, 0.02], [0.09, 0.50, 0.13]], 0.095);
-    this.sphere(tail, cream, [0.09, 0.50, 0.13], [0.105, 0.12, 0.11], [0, 0, 0], 16);
+    // 柴犬卷尾：环在背上的粗管 + 奶油尾尖
+    const tail = this.group(model, [0, 1.02, -0.62], [0.05, 0, 0]);
+    this.tube(tail, fur, [[0, 0, 0], [0.02, 0.26, -0.14], [0.05, 0.46, -0.02], [0.02, 0.36, 0.12]], 0.10);
+    this.sphere(tail, cream, [0.02, 0.36, 0.12], [0.10, 0.11, 0.10], [0, 0, 0], 16);
     this.trackTail(tail);
   }
 
@@ -1013,34 +1037,34 @@ export class IndependentSpecies3D {
     const pale = this.material(p.cream);
     const socks = this.material(p.paw);
 
-    const body = this.group(model, [0, 0.74, -0.08]);
-    this.sphere(body, fur, [0, 0, 0], [0.53, 0.34, 0.78]);
-    this.sphere(body, pale, [0, -0.12, 0.55], [0.34, 0.22, 0.28]);
+    const body = this.group(model, [0, 0.70, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.58, 0.48, 0.82]);
+    this.sphere(body, pale, [0, -0.12, 0.56], [0.34, 0.24, 0.28]);
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.leg(model, side * 0.36, 0.43, 0.47, 0.09, socks, socks, side, true, [0.12, 0.06, 0.18]);
-      this.leg(model, side * 0.36, -0.50, 0.47, 0.105, socks, socks, side, false, [0.14, 0.06, 0.19]);
+      this.stubLeg(model, side * 0.38, 0.34, 0.46, 0.13, 0.24, socks, socks, side, true);
+      this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
     }
 
-    const head = this.group(model, [0, 1.10, 0.66]);
-    this.sphere(head, fur, [0, 0, 0], [0.43, 0.36, 0.43]);
-    this.sphere(head, pale, [0, -0.17, 0.30], [0.32, 0.17, 0.32]);
-    this.cone(head, fur, [0, -0.10, 0.51], 0.235, 0.58, [1, 0.80, 1], [Math.PI / 2, 0, 0], 24);
-    this.cone(head, pale, [0, -0.18, 0.50], 0.17, 0.49, [1, 0.65, 1], [Math.PI / 2, 0, 0], 20);
-    this.sphere(head, this.material(p.nose, 0.38), [0, -0.10, 0.815], [0.075, 0.06, 0.05], [0, 0, 0], 16);
+    const head = this.group(model, [0, 1.24, 0.54]);
+    this.sphere(head, fur, [0, 0, 0], [0.52, 0.48, 0.50]);
+    this.cone(head, fur, [0, -0.10, 0.44], 0.19, 0.42, [1, 0.85, 1], [Math.PI / 2, 0, 0], 22);
+    this.cone(head, pale, [0, -0.16, 0.44], 0.13, 0.32, [1, 0.70, 1], [Math.PI / 2, 0, 0], 18);
+    this.sphere(head, this.material(p.nose, 0.38), [0, -0.14, 0.66], [0.065, 0.05, 0.045], [0, 0, 0], 16);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.19, 0.055, 0.39], 0.072, { aspect: 0.64, tilt: -side * 0.24 });
-      const ear = this.group(head, [side * 0.28, 0.42, -0.055], [0, 0, -side * 0.10]);
-      this.cone(ear, this.material(p.ear), [0, 0.04, 0], 0.22, 0.58, [1, 1, 0.65], [0, 0, 0], 3);
-      this.cone(ear, this.material(p.innerEar), [0, 0.025, 0.075], 0.125, 0.39, [1, 1, 0.35], [0, 0, 0], 3);
+      this.eye(head, [side * 0.20, 0.07, 0.42], 0.075, { aspect: 0.76, tilt: -side * 0.20 });
+      const ear = this.group(head, [side * 0.27, 0.26, -0.06], [0, 0, -side * 0.14]);
+      this.cone(ear, this.material(p.ear), [0, 0.24, 0], 0.185, 0.46, [1, 1, 0.62], [0, 0, 0], 3);
+      this.cone(ear, this.material(p.innerEar), [0, 0.21, 0.06], 0.105, 0.30, [1, 1, 0.34], [0, 0, 0], 3);
       this.trackEar(ear, side);
     }
     this.trackHead(head);
 
-    const tail = this.group(model, [0.30, 0.73, -0.63], [0, -0.10, 0]);
-    this.tube(tail, fur, [[0, 0, 0], [0.30, 0.01, -0.08], [0.48, 0.18, 0.01], [0.40, 0.40, 0.15], [0.20, 0.53, 0.25]], 0.235);
-    this.sphere(tail, pale, [0.20, 0.53, 0.25], [0.24, 0.26, 0.25], [0, 0, 0], 20);
+    // 蓬松大尾巴：粗管贴着身后拖，奶油尾尖
+    const tail = this.group(model, [0, 0.60, -0.58]);
+    this.tube(tail, fur, [[0, 0, 0], [0, 0.06, -0.28], [0, 0.16, -0.52], [0, 0.12, -0.70]], 0.19);
+    this.sphere(tail, pale, [0, 0.12, -0.72], [0.19, 0.21, 0.20], [0, 0, 0], 20);
     this.trackTail(tail);
   }
 
@@ -1050,28 +1074,27 @@ export class IndependentSpecies3D {
     const white = this.material(p.fur);
     const black = this.material(p.secondary.getHex() === p.fur.getHex() ? new THREE.Color('#1c1c1e') : p.secondary);
 
-    const body = this.group(model, [0, 0.85, -0.08]);
-    this.sphere(body, white, [0, 0, 0], [0.68, 0.50, 0.74]);
-    this.sphere(body, black, [0, 0.04, 0.37], [0.69, 0.47, 0.37]);
+    const body = this.group(model, [0, 0.74, 0]);
+    this.sphere(body, white, [0, 0, 0], [0.64, 0.52, 0.80]);
+    this.sphere(body, black, [0, 0.10, 0.28], [0.64, 0.38, 0.54]);
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      this.leg(model, side * 0.46, 0.43, 0.55, 0.15, black, black, side, true, [0.20, 0.08, 0.23]);
-      this.leg(model, side * 0.46, -0.50, 0.55, 0.17, black, black, side, false, [0.22, 0.08, 0.24]);
+      this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.17, 0.25, black, black, side, true);
+      this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
     }
 
-    const head = this.group(model, [0, 1.38, 0.66]);
-    this.sphere(head, white, [0, 0, 0], [0.51, 0.46, 0.44]);
+    const head = this.group(model, [0, 1.34, 0.52]);
+    this.sphere(head, white, [0, 0, 0], [0.55, 0.51, 0.50]);
     for (const side of [-1, 1] as const) {
-      const ear = this.group(head, [side * 0.36, 0.36, -0.035]);
-      this.sphere(ear, black, [0, 0, 0], [0.18, 0.18, 0.13], [0, 0, 0], 18);
+      const ear = this.group(head, [side * 0.38, 0.36, -0.04]);
+      this.sphere(ear, black, [0, 0, 0], [0.155, 0.155, 0.12], [0, 0, 0], 18);
       this.trackEar(ear, side);
-      this.sphere(head, black, [side * 0.20, 0.035, 0.408], [0.14, 0.19, 0.035], [0, 0, -side * 0.28], 20);
-      this.eye(head, [side * 0.20, 0.04, 0.447], 0.052, { iris: WHITE, pupil: p.pupil });
+      this.sphere(head, black, [side * 0.20, 0.05, 0.44], [0.13, 0.17, 0.03], [0, 0, -side * 0.26], 20);
+      this.eye(head, [side * 0.20, 0.04, 0.47], 0.055, { iris: WHITE, pupil: p.pupil });
     }
-    this.sphere(head, this.material(tint(p.fur, -0.03)), [0, -0.16, 0.40], [0.25, 0.16, 0.17]);
-    this.sphere(head, black, [0, -0.105, 0.555], [0.085, 0.06, 0.045], [0, 0, 0], 16);
-    this.smile(head, [0, -0.22, 0.54], 0.08, black);
+    this.sphere(head, black, [0, -0.12, 0.50], [0.075, 0.055, 0.04], [0, 0, 0], 16);
+    this.smile(head, [0, -0.22, 0.48], 0.075, black);
     this.trackHead(head);
   }
 
@@ -1081,39 +1104,38 @@ export class IndependentSpecies3D {
     const fur = this.material(p.fur);
     const pale = this.material(p.belly);
 
-    const body = this.group(model, [0, 0.65, -0.16], [-0.16, 0, 0]);
-    this.sphere(body, fur, [0, 0, 0], [0.54, 0.46, 0.67]);
-    this.sphere(body, pale, [0, -0.13, 0.46], [0.34, 0.28, 0.25]);
+    // Q 版兔子：坐墩团子 + 长耳，小手搭在胸前
+    const body = this.group(model, [0, 0.62, 0], [-0.10, 0, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.54, 0.52, 0.46]);
+    this.sphere(body, pale, [0, -0.12, 0.32], [0.34, 0.30, 0.20]);
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
-      const haunch = this.group(model, [side * 0.43, 0.40, -0.38]);
-      this.sphere(haunch, fur, [0, 0, 0], [0.31, 0.34, 0.43]);
-      this.sphere(haunch, pale, [0, -0.30, 0.42], [0.20, 0.09, 0.39]);
-      this.trackLimb(haunch, side, false, Math.PI + side * 0.5);
-      const front = this.group(model, [side * 0.24, 0.37, 0.39]);
-      this.capsule(front, fur, [0, -0.11, 0], 0.085, 0.30);
-      this.sphere(front, pale, [0, -0.27, 0.09], [0.11, 0.065, 0.17], [0, 0, 0], 16);
+      const front = this.group(model, [side * 0.30, 0.72, 0.22]);
+      this.capsule(front, fur, [0, -0.10, 0], 0.085, 0.26);
+      this.sphere(front, pale, [0, -0.24, 0.05], [0.10, 0.06, 0.13], [0, 0, 0], 16);
       this.trackLimb(front, side, true, side * 0.5);
+      const foot = this.group(model, [side * 0.24, 0.10, 0.28]);
+      this.sphere(foot, fur, [0, 0, 0], [0.17, 0.09, 0.24], [0, 0, 0], 18);
+      this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    const head = this.group(model, [0, 1.06, 0.38]);
-    this.sphere(head, fur, [0, 0, 0], [0.42, 0.38, 0.38]);
-    this.sphere(head, pale, [0, -0.13, 0.32], [0.24, 0.15, 0.14]);
+    const head = this.group(model, [0, 1.40, 0.02]);
+    this.sphere(head, fur, [0, 0, 0], [0.58, 0.54, 0.52]);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.18, 0.035, 0.35], 0.070);
-      const ear = this.group(head, [side * 0.20, 0.28, -0.055], [0.02, 0, -side * 0.055]);
-      this.capsule(ear, fur, [0, 0.40, 0], 0.115, 0.85, [1, 1, 0.66]);
-      this.capsule(ear, this.material(p.innerEar), [0, 0.41, 0.073], 0.060, 0.65, [1, 1, 0.30]);
+      this.eye(head, [side * 0.20, 0.04, 0.46], 0.075);
+      const ear = this.group(head, [side * 0.20, 0.32, -0.06], [0.02, 0, -side * 0.08]);
+      this.capsule(ear, fur, [0, 0.40, 0], 0.105, 0.72, [1, 1, 0.68]);
+      this.capsule(ear, this.material(p.innerEar), [0, 0.41, 0.065], 0.055, 0.54, [1, 1, 0.30]);
       this.trackEar(ear, side);
     }
-    this.sphere(head, this.material(p.nose), [0, -0.085, 0.445], [0.055, 0.04, 0.03], [0, 0, 0], 14);
-    this.smile(head, [0, -0.16, 0.43], 0.065, this.material(p.mouth));
-    this.blush(head, 0.29, -0.10, 0.30, 0.075);
+    this.sphere(head, this.material(p.nose), [0, -0.10, 0.50], [0.05, 0.038, 0.03], [0, 0, 0], 14);
+    this.smile(head, [0, -0.18, 0.48], 0.06, this.material(p.mouth));
+    this.blush(head, 0.36, -0.12, 0.36, 0.075);
     this.trackHead(head);
 
-    const tail = this.group(model, [0, 0.59, -0.79]);
-    this.sphere(tail, this.material(p.cream), [0, 0, 0], [0.18, 0.18, 0.18], [0, 0, 0], 18);
+    const tail = this.group(model, [0, 0.56, -0.42]);
+    this.sphere(tail, this.material(p.cream), [0, 0, 0], [0.16, 0.16, 0.16], [0, 0, 0], 18);
     this.trackTail(tail);
   }
 
@@ -1137,14 +1159,14 @@ export class IndependentSpecies3D {
     this.mesh(body, pear, dark, [0, 1.0, 0], [0.75, 0.95, 0.59]);
     this.sphere(body, white, [0, 0.91, 0.47], [0.49, 0.70, 0.105]);
     for (const side of [-1, 1] as const) {
-      this.eye(body, [side * 0.19, 1.49, 0.49], 0.082, { iris: WHITE, pupil: p.pupil });
+      this.eye(body, [side * 0.19, 1.49, 0.49], 0.088, { iris: WHITE, pupil: p.pupil });
     }
     this.cone(body, orange, [0, 1.29, 0.62], 0.12, 0.34, [1, 0.72, 1], [Math.PI / 2, 0, 0], 20);
     this.trackBody(body);
 
     for (const side of [-1, 1] as const) {
       const flipper = this.group(model, [side * 0.57, 1.10, -0.015], [0, 0, -side * 0.25]);
-      this.capsule(flipper, dark, [side * 0.10, -0.18, 0], 0.13, 0.65, [0.75, 1, 1.15], [0, 0, side * 0.16]);
+      this.capsule(flipper, dark, [side * 0.10, -0.18, 0], 0.13, 0.62, [0.75, 1, 1.15], [0, 0, side * 0.16]);
       this.trackLimb(flipper, side, true, side * 0.5);
       const foot = this.group(model, [side * 0.27, 0.08, 0.22]);
       this.sphere(foot, orange, [0, 0, 0], [0.28, 0.08, 0.37], [0, side * 0.08, 0], 20);
@@ -1177,35 +1199,34 @@ export class IndependentSpecies3D {
     const green = this.material(p.fur);
     const pale = this.material(p.belly);
 
-    const body = this.group(model, [0, 0.56, -0.13]);
-    this.sphere(body, green, [0, 0, 0], [0.79, 0.36, 0.65]);
-    this.sphere(body, pale, [0, -0.12, 0.48], [0.51, 0.22, 0.25]);
+    // Q 版青蛙：宽扁团子，眼睛顶着两个大圆包
+    const body = this.group(model, [0, 0.50, -0.08]);
+    this.sphere(body, green, [0, 0, 0], [0.72, 0.34, 0.58]);
+    this.sphere(body, pale, [0, -0.08, 0.38], [0.46, 0.18, 0.22]);
     this.trackBody(body);
 
-    const head = this.group(model, [0, 0.96, 0.31]);
-    this.sphere(head, green, [0, 0, 0], [0.81, 0.40, 0.58]);
-    this.smile(head, [0, -0.13, 0.565], 0.43, this.material(p.mouth));
+    const head = this.group(model, [0, 0.78, 0.20]);
+    this.sphere(head, green, [0, 0, 0], [0.74, 0.34, 0.50]);
+    this.smile(head, [0, -0.14, 0.46], 0.34, this.material(p.mouth));
     for (const side of [-1, 1] as const) {
-      this.sphere(head, this.material(tint(p.fur, -0.12)), [side * 0.19, -0.015, 0.55], [0.035, 0.022, 0.018], [0, 0, 0], 12);
-      this.sphere(head, green, [side * 0.43, 0.39, 0.04], [0.30, 0.30, 0.27], [0, 0, 0], 24);
-      this.eye(head, [side * 0.43, 0.41, 0.285], 0.17, { iris: p.eye, pupil: p.pupil, aspect: 1.08 });
+      this.sphere(head, green, [side * 0.38, 0.28, 0.0], [0.24, 0.24, 0.22], [0, 0, 0], 24);
+      this.eye(head, [side * 0.38, 0.30, 0.19], 0.15, { iris: p.eye, pupil: p.pupil, aspect: 1.05 });
+      this.sphere(head, this.material(tint(p.fur, -0.12)), [side * 0.17, -0.06, 0.46], [0.03, 0.02, 0.016], [0, 0, 0], 12);
     }
-    this.blush(head, 0.57, -0.12, 0.43, 0.11);
+    this.blush(head, 0.50, -0.16, 0.34, 0.10);
     this.trackHead(head);
 
     for (const side of [-1, 1] as const) {
-      const rear = this.group(model, [side * 0.65, 0.43, -0.34], [0, side * 0.12, 0]);
-      this.sphere(rear, green, [0, 0, 0], [0.36, 0.28, 0.41]);
-      this.tube(rear, green, [[0, -0.04, 0.02], [side * 0.15, -0.18, 0.15], [side * 0.17, -0.28, 0.40]], 0.105);
+      const rear = this.group(model, [side * 0.56, 0.34, -0.28]);
+      this.sphere(rear, green, [0, 0, 0], [0.30, 0.24, 0.34]);
       this.trackLimb(rear, side, false, Math.PI + side * 0.5);
-      const rearFoot = this.webFoot(model, [side * 0.79, 0.04, 0.13], -side * 0.20, pale);
-      this.trackLimb(rearFoot, side, false, Math.PI + side * 0.8);
-
-      const front = this.group(model, [side * 0.56, 0.43, 0.48], [0.30, 0, -side * 0.15]);
-      this.capsule(front, green, [0, -0.15, 0], 0.09, 0.39);
+      const front = this.group(model, [side * 0.50, 0.34, 0.36]);
+      this.capsule(front, green, [0, -0.10, 0], 0.085, 0.24);
       this.trackLimb(front, side, true, side * 0.5);
-      const frontFoot = this.webFoot(model, [side * 0.58, 0.04, 0.68], side * 0.10, pale);
+      const frontFoot = this.webFoot(model, [side * 0.50, 0.05, 0.54], side * 0.10, pale);
       this.trackLimb(frontFoot, side, true, side * 0.8);
+      const rearFoot = this.webFoot(model, [side * 0.62, 0.05, 0.04], -side * 0.20, pale);
+      this.trackLimb(rearFoot, side, false, Math.PI + side * 0.8);
     }
   }
 
@@ -1226,17 +1247,17 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       chiArms.push(this.softLimb(
         model, side,
-        [side * 0.40, 0.78, 0.07],
+        [side * 0.42, 0.80, 0.08],
         {
-          upper: 0.15, lower: 0.13, radius: 0.118,
+          upper: 0.13, lower: 0.12, radius: 0.13,
           fur, pawMat: fur,
           hang: -side * 0.12, bend: -side * 0.12,
-          pawScale: [0.135, 0.10, 0.125],
+          pawScale: [0.14, 0.105, 0.13],
         },
         true, side * 0.5,
       ));
       const foot = this.group(model, [side * 0.21, 0.10, 0.16]);
-      this.sphere(foot, fur, [0, 0, 0], [0.19, 0.11, 0.25], [0, 0, 0], 20);
+      this.sphere(foot, fur, [0, 0, 0], [0.21, 0.115, 0.27], [0, 0, 0], 20);
       this.sphere(foot, cream, [0, -0.04, 0.19], [0.12, 0.055, 0.085], [0, 0, 0], 16);
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
@@ -1247,12 +1268,12 @@ export class IndependentSpecies3D {
     this.trackTail(tail);
 
     const head = this.group(model, [0, 1.25, 0.03]);
-    this.sphere(head, fur, [0, 0, 0], [0.56, 0.51, 0.46]);
+    this.sphere(head, fur, [0, 0, 0], [0.58, 0.53, 0.47]);
     for (const side of [-1, 1] as const) {
       const ear = this.group(head, [side * 0.38, 0.37, -0.025]);
       this.sphere(ear, fur, [0, 0, 0], [0.135, 0.135, 0.10], [0, 0, 0], 18);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.20, 0.005, 0.435], 0.056, { aspect: 0.92 });
+      this.eye(head, [side * 0.20, 0.005, 0.44], 0.058, { aspect: 0.92 });
     }
     // Tiny w mouth plus the small dot below it, exactly as in the reference.
     for (const side of [-1, 1] as const) {
@@ -1279,7 +1300,6 @@ export class IndependentSpecies3D {
 
     // Mini weeding sickle held in the right paw, mounted on the wrist so it
     // follows the whole arm chain. Blender-authored curved blade.
-    const steel = this.material(new THREE.Color('#c8ced6'), 0.42);
     const grip = this.material(new THREE.Color('#8a5a3c'), 0.8);
     const sickle = this.group(model, [0.62, 0.52, 0.30], [0.2, -0.35, -0.55]);
     const bladeMat = this.material(new THREE.Color('#c8ced6'), 0.42);
@@ -1327,76 +1347,58 @@ export class IndependentSpecies3D {
     const patches = this.material(p.secondary);
     const pink = this.material(p.nose, 0.72);
     const ink = this.material(p.mouth);
-    const dark = this.material(tint(p.secondary, 0.08));
+    const hornMat = this.material(new THREE.Color('#e8ddc8'), 0.72);
+    const earMat = this.material(new THREE.Color('#6d6d70'), 0.8);
 
-    const body = this.group(model, [0, 0.88, -0.08]);
-    this.sphere(body, white, [0, 0, 0], [0.73, 0.50, 0.86]);
-    this.sphere(body, patches, [-0.61, 0.08, -0.22], [0.13, 0.29, 0.36], [0, 0, -0.14], 20);
-    this.sphere(body, patches, [0.60, -0.08, 0.27], [0.15, 0.25, 0.31], [0, 0, 0.18], 20);
-    this.sphere(body, patches, [0.14, 0.42, -0.26], [0.28, 0.09, 0.31], [0, 0, 0], 18);
+    // Q 版表情包牛：矮墩白面包身 + 黑色碎斑 + 大圆脸，弃用旧原型头
+    const body = this.group(model, [0, 0.72, 0]);
+    this.sphere(body, white, [0, 0, 0], [0.62, 0.52, 0.82]);
+    this.sphere(body, patches, [-0.50, 0.10, -0.20], [0.16, 0.26, 0.32], [0, 0, -0.14], 20);
+    this.sphere(body, patches, [0.50, -0.06, 0.24], [0.15, 0.22, 0.28], [0, 0, 0.18], 20);
+    this.sphere(body, patches, [0.12, 0.40, -0.26], [0.26, 0.09, 0.30], [0, 0, 0], 18);
     this.trackBody(body);
 
-    const cowLegs: SoftLimbRef[] = [];
     for (const side of [-1, 1] as const) {
-      cowLegs.push(this.softLimb(
-        model, side,
-        [side * 0.45, 0.60, 0.47],
-        {
-          upper: 0.28, lower: 0.28, radius: 0.155,
-          fur: white, pawMat: patches,
-          bend: side * 0.045,
-          pawScale: [0.20, 0.10, 0.24],
-        },
-        true, side * 0.5,
-      ));
-      cowLegs.push(this.softLimb(
-        model, side,
-        [side * 0.45, 0.60, -0.53],
-        {
-          upper: 0.28, lower: 0.28, radius: 0.165,
-          fur: white, pawMat: patches,
-          bend: side * 0.045,
-          pawScale: [0.21, 0.10, 0.25],
-        },
-        false, Math.PI + side * 0.5,
-      ));
+      this.stubLeg(model, side * 0.42, 0.36, 0.46, 0.16, 0.25, white, patches, side, true);
+      this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
     }
 
-    const head = this.group(model, [0, 1.30, 0.66]);
-    // Blender boxy-round head: the meme cow's squared-off silhouette.
-    this.proto(head, 'cow_head', white, [0, 0, 0], [0.60, 0.52, 0.50]);
-    // Irregular dark patches and the small white diamond on the forehead.
-    this.sphere(head, patches, [-0.30, 0.34, 0.30], [0.25, 0.18, 0.12], [0, 0, -0.20], 20);
-    this.sphere(head, patches, [0.35, 0.30, 0.30], [0.19, 0.14, 0.11], [0, 0, 0.22], 20);
-    this.box(head, white, [0, 0.45, 0.46], [0.095, 0.095, 0.025], [0, 0, Math.PI / 4]);
+    const head = this.group(model, [0, 1.30, 0.54]);
+    this.sphere(head, white, [0, 0, 0], [0.56, 0.50, 0.50]);
+    // 头顶碎斑 + 额头白色小菱形
+    this.sphere(head, patches, [-0.28, 0.28, 0.26], [0.17, 0.12, 0.09], [0, 0, -0.20], 20);
+    this.sphere(head, patches, [0.30, 0.26, 0.26], [0.14, 0.10, 0.08], [0, 0, 0.22], 20);
+    this.box(head, white, [0, 0.40, 0.33], [0.085, 0.085, 0.02], [0, 0, Math.PI / 4]);
 
     for (const side of [-1, 1] as const) {
-      const ear = this.group(head, [side * 0.58, 0.10, -0.02], [0, 0, -side * 0.18]);
-      this.sphere(ear, this.material(new THREE.Color('#6d6d70')), [side * 0.12, 0, 0], [0.26, 0.12, 0.17], [0, 0, side * 0.10], 18);
+      // 圆润小角 + 横椭圆耳朵
+      const horn = this.group(head, [side * 0.28, 0.42, -0.06], [0, 0, -side * 0.35]);
+      this.roundHorn(horn, [0, 0.10, 0], hornMat, 0.065, 0.18);
+      const ear = this.group(head, [side * 0.50, 0.10, -0.02], [0, 0, -side * 0.14]);
+      this.sphere(ear, earMat, [side * 0.08, 0, 0], [0.20, 0.10, 0.13], [0, 0, side * 0.10], 18);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.24, 0.055, 0.45], 0.046, { aspect: 0.52 });
-      // Half-lidded deadpan brows: much flatter than the old angry slant.
-      const brow = this.brow(head, [side * 0.24, 0.16, 0.47], 0.16, -side * 0.10, patches);
-      brow.scale.y = 1.5;
+      // 表情包呆滞眼：黑色小豆豆眼 + 平直眉
+      this.eye(head, [side * 0.24, 0.10, 0.45], 0.052, { iris: p.mouth, pupil: BLACK });
+      const brow = this.brow(head, [side * 0.24, 0.24, 0.43], 0.12, 0, patches);
+      brow.scale.y = 1.3;
     }
-    this.tube(head, patches, [[0, 0.38, 0.49], [0, 0.26, 0.51], [0, 0.14, 0.52]], 0.026);
-    this.sphere(head, pink, [0, -0.18, 0.43], [0.39, 0.25, 0.19]);
+    // 粉色口鼻 + 两粒鼻孔 + 震惊的 O 嘴
+    this.sphere(head, pink, [0, -0.22, 0.40], [0.28, 0.17, 0.14]);
     for (const side of [-1, 1] as const) {
-      this.sphere(head, dark, [side * 0.15, -0.14, 0.605], [0.05, 0.038, 0.022], [0, 0, 0], 12);
+      this.sphere(head, ink, [side * 0.11, -0.20, 0.50], [0.04, 0.03, 0.02], [0, 0, 0], 12);
     }
-    // Big shocked "O" mouth with a pink lip ring.
-    const mouthDark = this.sphere(head, ink, [0, -0.30, 0.615], [0.10, 0.14, 0.028], [0, 0, 0], 20);
-    this.mesh(head, new THREE.TorusGeometry(0.11, 0.027, 12, 24), pink, [0, -0.30, 0.625], [1, 1.28, 1]);
+    const mouthDark = this.sphere(head, ink, [0, -0.34, 0.48], [0.085, 0.12, 0.024], [0, 0, 0], 20);
+    this.mesh(head, new THREE.TorusGeometry(0.095, 0.024, 12, 24), pink, [0, -0.34, 0.485], [1, 1.25, 1]);
 
     // Straw dangling from the mouth; drops and gets chewed back on a cycle.
     const strawMat = this.material(new THREE.Color('#9fbf4a'), 0.82);
-    const strawBase: Vec3 = [0.03, -0.34, 0.63];
+    const strawBase: Vec3 = [0.03, -0.36, 0.50];
     const straw = this.proto(head, 'straw', strawMat, strawBase, [1, 1, 1], [0, 0, Math.PI / 2 + 0.25]);
     this.trackHead(head);
 
-    const tail = this.group(model, [0, 0.97, -0.87]);
-    this.tube(tail, white, [[0, 0, 0], [0.06, -0.20, -0.17], [0.13, -0.43, -0.19], [0.18, -0.59, -0.10]], 0.040);
-    this.sphere(tail, patches, [0.18, -0.59, -0.10], [0.09, 0.15, 0.08], [0, 0, -0.20], 16);
+    const tail = this.group(model, [0, 0.94, -0.72]);
+    this.tube(tail, white, [[0, 0, 0], [0.06, -0.18, -0.15], [0.13, -0.38, -0.16], [0.18, -0.52, -0.08]], 0.038);
+    this.sphere(tail, patches, [0.18, -0.52, -0.08], [0.08, 0.13, 0.07], [0, 0, -0.20], 16);
     this.trackTail(tail);
 
     // "牛惊": the head jerks back, eyes widen and the O-mouth pops open.
@@ -1409,11 +1411,7 @@ export class IndependentSpecies3D {
         this.head.node.rotation.y += Math.sin(time * 0.55) * 0.035 * awake;
       }
       for (const eye of this.eyes) eye.node.scale.y *= 1 + shock * 0.22;
-      mouthDark.scale.y = 0.14 * (1 + shock * 0.30);
-      for (const leg of cowLegs) {
-        const delayed = followBeat(time, 8.4, 2.8, 4.8, leg.front ? 0.10 : 0.22);
-        leg.elbow.rotation.z = leg.side * 0.045 + leg.side * delayed * 0.10;
-      }
+      mouthDark.scale.y = 0.12 * (1 + shock * 0.30);
       if (this.tail) {
         this.tail.node.rotation.x += shock * 0.18;
         this.tail.node.rotation.z += followBeat(time, 8.4, 2.8, 4.8, 0.14) * 0.14;
@@ -1437,61 +1435,64 @@ export class IndependentSpecies3D {
     const ink = this.material(p.mouth);
     const claw = this.material(new THREE.Color('#6b3a1f'));
 
-    const body = this.group(model, [0, 0.75, -0.02]);
+    const body = this.group(model, [0, 0.62, 0]);
     // Blender barrel torso: a rounded, jiggly mass rather than a plain sphere.
-    this.proto(body, 'dragon_belly', fur, [0, 0, 0], [0.66, 0.62, 0.54]);
+    this.proto(body, 'dragon_belly', fur, [0, 0, 0], [0.62, 0.56, 0.50]);
     // The duang belly is a front-facing dome, not a flat bib.
-    const duang = this.proto(body, 'dragon_belly', belly, [0, -0.07, 0.40], [0.42, 0.42, 0.30]);
+    const duang = this.proto(body, 'dragon_belly', belly, [0, -0.06, 0.36], [0.46, 0.44, 0.32]);
     this.trackBody(body);
 
     const dragonArms: SoftLimbRef[] = [];
     for (const side of [-1, 1] as const) {
       dragonArms.push(this.softLimb(
         model, side,
-        [side * 0.54, 0.95, 0.10],
+        [side * 0.48, 0.88, 0.10],
         {
-          upper: 0.19, lower: 0.17, radius: 0.15,
+          upper: 0.13, lower: 0.12, radius: 0.145,
           fur, pawMat: fur,
-          hang: side * 0.42, bend: -side * 0.10,
+          hang: -side * 0.08, bend: -side * 0.10,
           pawScale: [0.155, 0.115, 0.145],
-          claws: { color: new THREE.Color('#6b3a1f'), count: 3, spread: 0.058, size: 0.032, depth: 0.15 },
+          claws: { color: new THREE.Color('#6b3a1f'), count: 3, spread: 0.058, size: 0.032, depth: 0.14 },
         },
         true, side * 0.5,
       ));
-      const foot = this.group(model, [side * 0.30, 0.11, 0.17]);
-      this.sphere(foot, fur, [0, 0, 0], [0.27, 0.12, 0.33], [0, 0, 0], 20);
-      this.sphere(foot, belly, [0, -0.045, 0.26], [0.16, 0.05, 0.08], [0, 0, 0], 16);
+      const foot = this.group(model, [side * 0.28, 0.11, 0.28]);
+      this.sphere(foot, fur, [0, 0, 0], [0.23, 0.11, 0.29], [0, 0, 0], 20);
+      this.sphere(foot, belly, [0, -0.04, 0.22], [0.14, 0.05, 0.07], [0, 0, 0], 16);
       for (const dx of [-0.07, 0, 0.07]) {
-        this.sphere(foot, claw, [dx, 0.01, 0.31], [0.035, 0.025, 0.025], [0, 0, 0], 12);
+        this.sphere(foot, claw, [dx, 0.01, 0.27], [0.035, 0.025, 0.025], [0, 0, 0], 12);
       }
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    // Oversized round head (about half the body), no ears, no horns, no brows.
-    const head = this.group(model, [0, 1.33, 0.04]);
-    this.proto(head, 'dragon_head', fur, [0, 0, 0], [0.60, 0.53, 0.50]);
+    // 超大圆头（无耳无角无翅），亮绿色大圆眼是整张脸的主角
+    const head = this.group(model, [0, 1.40, 0.02]);
+    this.sphere(head, fur, [0, 0, 0], [0.62, 0.58, 0.54]);
     const greenIris = new THREE.Color('#57b34a');
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.21, 0.07, 0.47], 0.095, { iris: greenIris, pupil: BLACK, aspect: 1.0 });
+      this.eye(head, [side * 0.19, 0.08, 0.47], 0.105, { iris: greenIris, pupil: BLACK, aspect: 1.0 });
     }
-    this.mouthCurve(head, [0, -0.17, 0.485], 0.16, 0.03, ink, 0.017);
+    for (const side of [-1, 1] as const) {
+      this.sphere(head, ink, [side * 0.05, -0.16, 0.53], [0.018, 0.014, 0.012], [0, 0, 0], 10);
+    }
+    this.mouthCurve(head, [0, -0.28, 0.49], 0.17, 0.01, ink, 0.016);
     this.trackHead(head);
 
     // Tiny fire puff: a small cone that pops on the duang beat ("喷小火苗").
     const flameMat = this.material(new THREE.Color('#ff9a3c'), 0.5);
-    const flame = this.group(head, [0.20, -0.30, 0.42], [Math.PI / 2 - 0.35, 0, 0]);
+    const flame = this.group(head, [0.20, -0.36, 0.42], [Math.PI / 2 - 0.35, 0, 0]);
     this.cone(flame, flameMat, [0, 0.06, 0], 0.055, 0.16, [1, 1, 1], [0, 0, 0], 10);
     flame.visible = false;
 
-    const tail = this.group(model, [0, 0.55, -0.50], [0, 0.10, 0]);
-    this.sphere(tail, fur, [0.18, -0.02, -0.08], [0.16, 0.16, 0.16], [0, 0, 0], 18);
+    const tail = this.group(model, [0, 0.52, -0.42]);
+    this.sphere(tail, fur, [0, 0, 0], [0.155, 0.155, 0.155], [0, 0, 0], 18);
     this.trackTail(tail);
 
     // Lumbering walk plus the signature duang-duang bounce.
     this.motion((time, state) => {
       const awake = 1 - state.sleep;
       const wobble = Math.sin(time * 2.5) * 0.045 * awake;
-      duang.scale.set(0.42 * (1 + wobble), 0.42 * (1 - wobble * 0.7), 0.30);
+      duang.scale.set(0.46 * (1 + wobble), 0.44 * (1 - wobble * 0.7), 0.32);
       const cycle = ((time % 8.6) + 8.6) % 8.6;
       const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin(((cycle - 3.2) / 2.2) * Math.PI) : 0;
       duang.scale.x *= 1 + duangBeat * 0.16;
@@ -1530,56 +1531,35 @@ export class IndependentSpecies3D {
     const muzzleMat = this.material(new THREE.Color('#f59b1f'), 0.74);
     const shorts = this.material(new THREE.Color('#a9602e'), 0.82);
 
-    // Round mango-loaf body and the brown shorts from the reference.
-    const body = this.group(model, [0, 0.62, -0.10]);
-    this.sphere(body, fur, [0, 0, 0], [0.70, 0.44, 0.82]);
-    this.sphere(body, shorts, [0, -0.28, -0.28], [0.54, 0.17, 0.29], [0, 0, 0], 20);
+    // Q 版水豚噜噜：矮墩芒果面包身 + 棕色短裤，橘子顶在头上
+    const body = this.group(model, [0, 0.66, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.60, 0.48, 0.76]);
+    this.sphere(body, shorts, [0, -0.26, -0.22], [0.52, 0.15, 0.28], [0, 0, 0], 20);
     for (const side of [-1, 1] as const) {
-      this.tube(body, dark, [[side * 0.20, -0.40, 0.01], [side * 0.30, -0.31, 0.02], [side * 0.35, -0.19, 0.01]], 0.012);
+      this.tube(body, dark, [[side * 0.18, -0.36, 0.0], [side * 0.27, -0.28, 0.01], [side * 0.31, -0.17, 0.0]], 0.011);
     }
     this.trackBody(body);
 
-    const capyArms: SoftLimbRef[] = [];
     for (const side of [-1, 1] as const) {
-      capyArms.push(this.softLimb(
-        model, side,
-        [side * 0.40, 0.44, 0.44],
-        {
-          upper: 0.20, lower: 0.18, radius: 0.145,
-          fur: dark, pawMat: dark,
-          bend: -side * 0.06,
-          pawScale: [0.18, 0.085, 0.22],
-        },
-        true, side * 0.5,
-      ));
-      this.softLimb(
-        model, side,
-        [side * 0.40, 0.44, -0.54],
-        {
-          upper: 0.20, lower: 0.18, radius: 0.155,
-          fur: dark, pawMat: dark,
-          bend: -side * 0.06,
-          pawScale: [0.19, 0.085, 0.23],
-        },
-        false, Math.PI + side * 0.5,
-      );
+      this.stubLeg(model, side * 0.38, 0.32, 0.42, 0.14, 0.22, dark, dark, side, true);
+      this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
     }
 
-    const head = this.group(model, [0, 1.00, 0.66]);
-    this.sphere(head, fur, [0, 0, 0], [0.48, 0.42, 0.40]);
-    // The orange muzzle takes over most of the face in the reference.
-    this.sphere(head, muzzleMat, [0, -0.05, 0.30], [0.44, 0.34, 0.30], [0, 0, 0], 28);
+    const head = this.group(model, [0, 1.12, 0.50]);
+    this.sphere(head, fur, [0, 0, 0], [0.50, 0.44, 0.44]);
+    // 橘色大鼻吻（收小一号，不再是整张脸）
+    this.sphere(head, muzzleMat, [0, -0.12, 0.30], [0.30, 0.20, 0.24], [0, 0, 0], 24);
+    this.sphere(head, ink, [0, 0.02, 0.50], [0.08, 0.05, 0.03], [0, 0, 0], 14);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.23, 0.22, 0.34], 0.038, { iris: BLACK, pupil: BLACK, aspect: 1.0 });
-      const ear = this.group(head, [side * 0.34, 0.32, -0.02]);
-      this.sphere(ear, dark, [0, 0, 0], [0.10, 0.12, 0.08], [0, 0, 0], 16);
-      this.sphere(ear, this.material(p.nose, 0.8), [0, 0, 0.065], [0.05, 0.05, 0.02], [0, 0, 0], 14);
+      this.eye(head, [side * 0.23, 0.14, 0.41], 0.042, { iris: BLACK, pupil: BLACK });
+      const ear = this.group(head, [side * 0.34, 0.30, -0.02]);
+      this.sphere(ear, dark, [0, 0, 0], [0.09, 0.10, 0.07], [0, 0, 0], 16);
       this.trackEar(ear, side);
     }
-    this.mouthCurve(head, [0, -0.24, 0.60], 0.10, 0.02, ink, 0.014);
+    this.mouthCurve(head, [0, -0.24, 0.46], 0.09, 0.0, ink, 0.013);
     this.trackHead(head);
 
-    const orangeBase: Vec3 = [0, 0.40, 0.02];
+    const orangeBase: Vec3 = [0, 0.46, 0.0];
     const orange = this.group(head, orangeBase, [0, 0, -0.08]);
     this.sphere(orange, this.material(new THREE.Color('#f5883a'), 0.68), [0, 0, 0], [0.17, 0.15, 0.17], [0, 0, 0], 24);
     this.sphere(orange, this.material(new THREE.Color('#ffd06b')), [-0.05, 0.05, 0.13], [0.06, 0.04, 0.025], [0, 0, 0], 14);
@@ -1600,15 +1580,8 @@ export class IndependentSpecies3D {
       for (const limb of this.limbs) {
         if (limb.front && limb.side > 0) {
           limb.node.rotation.z += wave * 0.45;
-          limb.node.position.y += wave * 0.08;
+          limb.node.position.y += wave * 0.06;
         }
-      }
-      for (const arm of capyArms) {
-        if (arm.side <= 0) continue;
-        const elbow = followBeat(time, 6.4, 2.0, 4.6, 0.12);
-        const wrist = followBeat(time, 6.4, 2.0, 4.6, 0.24);
-        arm.elbow.rotation.z = -arm.side * 0.06 + arm.side * elbow * 0.30;
-        arm.wrist.rotation.z = arm.side * wrist * 0.24;
       }
     });
   }
@@ -1623,17 +1596,16 @@ export class IndependentSpecies3D {
     const darkPaw = this.material(new THREE.Color('#51283c'), 0.72);
     const tuftMat = this.material(new THREE.Color('#e8752f'), 0.72);
 
-    const body = this.group(model, [0, 0.72, -0.02]);
-    this.sphere(body, fur, [0, 0, 0], [0.60, 0.63, 0.48]);
-    this.sphere(body, whiteBelly, [0, -0.15, 0.41], [0.38, 0.43, 0.10], [0, 0, 0], 24);
+    const body = this.group(model, [0, 0.62, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.56, 0.54, 0.46]);
+    this.sphere(body, whiteBelly, [0, -0.12, 0.34], [0.34, 0.36, 0.10], [0, 0, 0], 24);
     this.trackBody(body);
 
     // Broad flat beaver tail with the cross-hatched texture.
-    const tail = this.group(model, [0.22, 0.25, -0.49], [0.08, -0.34, 0]);
-    // Blender flat beaver tail with a cross-hatched texture.
-    this.proto(tail, 'beaver_tail', tailMat, [0, 0, -0.18], [0.62, 0.16, 0.72]);
+    const tail = this.group(model, [0.16, 0.24, -0.40], [0.06, -0.30, 0]);
+    this.proto(tail, 'beaver_tail', tailMat, [0, 0, -0.16], [0.58, 0.15, 0.66]);
     for (let i = -2; i <= 2; i++) {
-      this.tube(tail, ink, [[i * 0.16, 0.085, -0.62], [i * 0.16, 0.10, -0.25], [i * 0.16, 0.075, 0.08]], 0.008);
+      this.tube(tail, ink, [[i * 0.14, 0.075, -0.54], [i * 0.14, 0.09, -0.20], [i * 0.14, 0.065, 0.06]], 0.008);
     }
     this.trackTail(tail);
 
@@ -1642,46 +1614,45 @@ export class IndependentSpecies3D {
       const raised = side < 0; // the reference shows the left paw up
       loopyArms.push(this.softLimb(
         model, side,
-        [side * 0.50, 0.82, 0.08],
+        [side * 0.45, 0.80, 0.10],
         {
-          upper: 0.17, lower: 0.16, radius: 0.12,
+          upper: 0.12, lower: 0.11, radius: 0.125,
           fur, pawMat: darkPaw,
-          hang: raised ? 0.62 : -side * 0.15, bend: -side * 0.08,
+          hang: raised ? 0.62 : -side * 0.12, bend: -side * 0.08,
           pawScale: [0.118, 0.088, 0.092],
-          claws: { color: new THREE.Color('#51283c'), count: 3, spread: 0.052, size: 0.024, depth: 0.09 },
         },
         true, side * 0.5,
       ));
-      const foot = this.group(model, [side * 0.28, 0.11, 0.15]);
-      this.sphere(foot, darkPaw, [0, 0, 0], [0.23, 0.11, 0.29], [0, 0, 0], 18);
+      const foot = this.group(model, [side * 0.26, 0.10, 0.26]);
+      this.sphere(foot, darkPaw, [0, 0, 0], [0.21, 0.10, 0.26], [0, 0, 0], 18);
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    const head = this.group(model, [0, 1.32, 0.04]);
-    this.sphere(head, fur, [0, 0, 0], [0.57, 0.51, 0.47]);
+    const head = this.group(model, [0, 1.40, 0.02]);
+    this.sphere(head, fur, [0, 0, 0], [0.60, 0.56, 0.52]);
     for (const side of [-1, 1] as const) {
-      const ear = this.group(head, [side * 0.46, 0.22, -0.04]);
+      const ear = this.group(head, [side * 0.42, 0.30, -0.04]);
       this.sphere(ear, fur, [0, 0, 0], [0.14, 0.15, 0.11], [0, 0, 0], 18);
-      this.sphere(ear, this.material(new THREE.Color('#f7d9df')), [0, 0, 0.085], [0.065, 0.070, 0.025], [0, 0, 0], 14);
+      this.sphere(ear, this.material(new THREE.Color('#f7d9df')), [0, 0, 0.075], [0.06, 0.065, 0.02], [0, 0, 0], 14);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.22, 0.04, 0.445], 0.075, { iris: BLACK, pupil: BLACK, aspect: 1.05 });
+      this.eye(head, [side * 0.20, 0.04, 0.45], 0.078, { iris: BLACK, pupil: BLACK, aspect: 1.05 });
     }
     // Big purple oval nose and open smile with two teeth.
-    this.sphere(head, this.material(new THREE.Color('#6d1d53'), 0.42), [0, -0.085, 0.49], [0.105, 0.085, 0.05], [0, 0, 0], 22);
-    this.sphere(head, ink, [0, -0.235, 0.475], [0.135, 0.095, 0.030], [0, 0, 0], 20);
-    this.teeth(head, -0.245, 0.505, 0.085, 0.085);
+    this.sphere(head, this.material(new THREE.Color('#6d1d53'), 0.42), [0, -0.10, 0.47], [0.095, 0.075, 0.045], [0, 0, 0], 22);
+    this.sphere(head, ink, [0, -0.24, 0.45], [0.12, 0.085, 0.028], [0, 0, 0], 20);
+    this.teeth(head, -0.25, 0.48, 0.075, 0.075);
 
     // Single Blender-authored ahoge (one soft tuft) instead of two thin spikes.
     const tufts: THREE.Group[] = [];
-    const tuft = this.group(head, [-0.22, 0.44, 0.02], [0, 0, 0.42]);
-    this.proto(tuft, 'ahoge', tuftMat, [0, 0, 0], [1.05, 1.05, 1.05]);
+    const tuft = this.group(head, [-0.20, 0.44, 0.02], [0, 0, 0.42]);
+    this.proto(tuft, 'ahoge', tuftMat, [0, 0, 0], [1.0, 1.0, 1.0]);
     this.trackEar(tuft, -1);
     tufts.push(tuft);
 
     // Pink bow hair clip on the other side of the head.
     const bowMat = this.material(new THREE.Color('#e86a93'), 0.66);
-    const bow = this.group(head, [0.34, 0.40, 0.10], [0, 0, -0.20]);
-    this.proto(bow, 'bow', bowMat, [0, 0, 0], [0.55, 0.55, 0.55]);
+    const bow = this.group(head, [0.32, 0.40, 0.10], [0, 0, -0.20]);
+    this.proto(bow, 'bow', bowMat, [0, 0, 0], [0.52, 0.52, 0.52]);
     this.trackEar(bow, 1);
     this.trackHead(head);
 
@@ -1730,24 +1701,24 @@ export class IndependentSpecies3D {
     const leaf = this.material(new THREE.Color('#6b9a4a'), 0.70);
     const bowYellow = this.material(new THREE.Color('#f2c14e'), 0.66);
 
-    const body = this.group(model, [0, 0.73, -0.03]);
-    this.sphere(body, fur, [0, 0, 0], [0.62, 0.65, 0.50]);
-    // Yellow bow tie instead of the camera.
-    this.sphere(body, bowYellow, [-0.16, 0.27, 0.46], [0.16, 0.10, 0.055], [0, 0, -0.12], 18);
-    this.sphere(body, bowYellow, [0.16, 0.27, 0.46], [0.16, 0.10, 0.055], [0, 0, 0.12], 18);
-    this.sphere(body, bowYellow, [0, 0.27, 0.50], [0.07, 0.07, 0.045], [0, 0, 0], 16);
+    const body = this.group(model, [0, 0.62, 0]);
+    this.sphere(body, fur, [0, 0, 0], [0.56, 0.54, 0.46]);
+    // Yellow bow tie on the chest.
+    this.sphere(body, bowYellow, [-0.14, 0.24, 0.40], [0.15, 0.095, 0.05], [0, 0, -0.12], 18);
+    this.sphere(body, bowYellow, [0.14, 0.24, 0.40], [0.15, 0.095, 0.05], [0, 0, 0.12], 18);
+    this.sphere(body, bowYellow, [0, 0.24, 0.44], [0.065, 0.065, 0.04], [0, 0, 0], 16);
     this.trackBody(body);
 
     const bubuArms: SoftLimbRef[] = [];
     for (const side of [-1, 1] as const) {
       const arm = this.softLimb(
         model, side,
-        [side * 0.52, 0.83, 0.07],
+        [side * 0.45, 0.80, 0.10],
         {
-          upper: 0.18, lower: 0.17, radius: 0.13,
+          upper: 0.12, lower: 0.11, radius: 0.13,
           fur, pawMat: this.material(p.paw),
           hang: -side * 0.15, bend: -side * 0.10,
-          pawScale: [0.14, 0.10, 0.13],
+          pawScale: [0.135, 0.098, 0.125],
         },
         true, side * 0.5,
       );
@@ -1763,45 +1734,45 @@ export class IndependentSpecies3D {
         }
         this.sphere(arm.wrist, rose, [0, 0.10, 0.25], [0.065, 0.065, 0.045], [0, 0, 0], 14);
       }
-      const foot = this.group(model, [side * 0.30, 0.12, 0.16]);
-      this.sphere(foot, this.material(p.paw), [0, 0, 0], [0.25, 0.12, 0.31], [0, 0, 0], 20);
+      const foot = this.group(model, [side * 0.26, 0.10, 0.26]);
+      this.sphere(foot, this.material(p.paw), [0, 0, 0], [0.22, 0.11, 0.27], [0, 0, 0], 20);
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    const head = this.group(model, [0, 1.34, 0.03]);
-    this.sphere(head, fur, [0, 0, 0], [0.57, 0.52, 0.47]);
+    const head = this.group(model, [0, 1.40, 0.02]);
+    this.sphere(head, fur, [0, 0, 0], [0.58, 0.55, 0.52]);
     for (const side of [-1, 1] as const) {
-      const ear = this.group(head, [side * 0.39, 0.39, -0.035]);
+      const ear = this.group(head, [side * 0.38, 0.38, -0.03]);
       if (side > 0) {
         // Right ear droops like a worn plush toy (Blender floppy-ear proto).
-        this.proto(ear, 'floppy_ear', fur, [0.02, -0.14, 0], [0.95, 1.15, 0.75], [0, 0, 0.55]);
+        this.proto(ear, 'floppy_ear', fur, [0.02, -0.12, 0], [0.95, 1.15, 0.75], [0, 0, 0.55]);
       } else {
-        this.sphere(ear, fur, [0, 0, 0], [0.185, 0.185, 0.14], [0, 0, 0], 20);
+        this.sphere(ear, fur, [0, 0, 0], [0.175, 0.175, 0.135], [0, 0, 0], 20);
       }
-      this.sphere(ear, this.material(p.innerEar), [0, 0, 0.115], [0.10, 0.10, 0.035], [0, 0, 0], 16);
+      this.sphere(ear, this.material(p.innerEar), [0, 0, 0.105], [0.095, 0.095, 0.03], [0, 0, 0], 16);
       this.trackEar(ear, side);
       // Mismatched button eyes: one higher, one lower, neither one blinks.
       const buttonMat = this.material(new THREE.Color(side < 0 ? '#3a2a22' : '#4a3529'), 0.55);
       const by = side < 0 ? 0.085 : 0.015;
-      this.proto(head, 'button_eye', buttonMat, [side * 0.19, by, 0.45], side < 0 ? [1.0, 1.0, 1.0] : [0.82, 0.82, 1.0]);
-      this.sphere(head, this.material(new THREE.Color('#d8c9b0')), [side * 0.19 - 0.02, by + 0.02, 0.475], [0.014, 0.014, 0.008], [0, 0, 0], 10);
-      this.sphere(head, blushMat, [side * 0.36, -0.10, 0.38], [0.115, 0.075, 0.025], [0, 0, 0], 16);
+      this.proto(head, 'button_eye', buttonMat, [side * 0.19, by, 0.46], side < 0 ? [1.0, 1.0, 1.0] : [0.82, 0.82, 1.0]);
+      this.sphere(head, this.material(new THREE.Color('#d8c9b0')), [side * 0.19 - 0.02, by + 0.02, 0.485], [0.014, 0.014, 0.008], [0, 0, 0], 10);
+      this.sphere(head, blushMat, [side * 0.34, -0.12, 0.38], [0.105, 0.07, 0.024], [0, 0, 0], 16);
       for (let i = 0; i < 2; i++) {
         this.tube(head, this.material(new THREE.Color('#c9864f')), [
-          [side * 0.33 + i * 0.05, -0.08, 0.405],
-          [side * 0.35 + i * 0.05, -0.13, 0.405],
+          [side * 0.31 + i * 0.05, -0.10, 0.40],
+          [side * 0.33 + i * 0.05, -0.15, 0.40],
         ], 0.006);
       }
     }
     // Crooked stitched mouth: a slightly slanted seam with vertical stitches.
     const threadMat = this.material(new THREE.Color('#8a6248'), 0.8);
-    this.tube(head, ink, [[-0.09, -0.14, 0.47], [-0.03, -0.17, 0.48], [0.03, -0.15, 0.48], [0.09, -0.18, 0.47]], 0.008);
+    this.tube(head, ink, [[-0.09, -0.16, 0.46], [-0.03, -0.19, 0.47], [0.03, -0.17, 0.47], [0.09, -0.20, 0.46]], 0.008);
     for (let i = 0; i < 4; i++) {
       const sx = -0.075 + i * 0.05;
-      this.tube(head, threadMat, [[sx, -0.155, 0.48], [sx + 0.008, -0.19, 0.48]], 0.006);
+      this.tube(head, threadMat, [[sx, -0.175, 0.47], [sx + 0.008, -0.21, 0.47]], 0.006);
     }
     // A loose thread poking out at the corner of the seam.
-    const looseThread = this.group(head, [0.10, -0.18, 0.47]);
+    const looseThread = this.group(head, [0.10, -0.20, 0.46]);
     this.tube(looseThread, threadMat, [[0, 0, 0], [0.05, 0.04, 0], [0.08, 0.02, 0]], 0.005);
     this.trackHead(head);
 
@@ -1835,6 +1806,7 @@ export class IndependentSpecies3D {
       }
     });
   }
+
 
   private clearModel(): void {
     if (this.model) {
