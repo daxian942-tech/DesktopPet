@@ -87,7 +87,8 @@ def iso_from_git(raw):
 
 
 def main():
-    commit = sys.argv[1] if len(sys.argv) > 1 else git("rev-parse", "HEAD")
+    # 规范化成完整 SHA，避免拿 7 位缩写去和 API 返回的完整 SHA 比较而误报「不一致」
+    commit = git("rev-parse", sys.argv[1] if len(sys.argv) > 1 else "HEAD")
     branch = sys.argv[2] if len(sys.argv) > 2 else "main"
     raw = git_bytes("cat-file", "commit", commit)
     head, message = raw.split(b"\n\n", 1)
