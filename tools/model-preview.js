@@ -32804,7 +32804,7 @@ void main() {
       const u = opts.upper;
       const l = opts.lower;
       const lowerR = r * 0.88;
-      const root = this.group(parent, position, [0, 0, opts.hang ?? 0]);
+      const root = this.group(parent, position, [opts.tiltX ?? 0, 0, opts.hang ?? 0]);
       const inner = this.group(root, [-side * r * 0.55, 0, r * 0.05]);
       const upperLen = u + r * 1.9;
       this.organicLimb(inner, opts.fur, [0, -u * 0.2 - r * 0.45, 0], upperLen, r, 0.94);
@@ -32905,7 +32905,7 @@ void main() {
       const hand = this.group(
         parent,
         [opts.x, opts.y, opts.bodyZ * 0.58],
-        [-0.92, 0, side * (opts.splay ?? 0.14)]
+        [opts.tilt ?? -0.92, 0, side * (opts.splay ?? 0.14)]
       );
       this.capsule(hand, opts.fur, [0, -reach * 0.4, 0], r * 1.02, reach + r * 1.1);
       const ps = opts.pawScale ?? [r * 1.55, r * 1.16, r * 1.4];
@@ -32929,10 +32929,11 @@ void main() {
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
           x: side * 0.29,
-          y: 0.6,
+          y: 0.43,
           bodyZ: 0.84,
           radius: 0.095,
-          reach: 0.58,
+          reach: 0.68,
+          tilt: -1.25,
           fur,
           paw: cream,
           pad: this.material(p.blush, 0.92),
@@ -32970,10 +32971,11 @@ void main() {
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
           x: side * 0.28,
-          y: 0.58,
+          y: 0.41,
           bodyZ: 0.82,
           radius: 0.09,
-          reach: 0.56,
+          reach: 0.66,
+          tilt: -1.25,
           fur,
           paw: socks,
           pad: pale,
@@ -33011,10 +33013,11 @@ void main() {
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
           x: side * 0.3,
-          y: 0.62,
+          y: 0.45,
           bodyZ: 0.8,
           radius: 0.102,
-          reach: 0.58,
+          reach: 0.7,
+          tilt: -1.25,
           fur: black,
           paw: black,
           pad: this.material(new Color("#d6d6dc"), 0.88),
@@ -33169,7 +33172,7 @@ void main() {
         chiArms.push(this.softLimb(
           model,
           side,
-          [side * 0.42, 0.8, 0.08],
+          [side * 0.36, 0.68, 0.26],
           {
             upper: 0.13,
             lower: 0.12,
@@ -33177,8 +33180,9 @@ void main() {
             fur,
             pawMat: fur,
             pad: this.material(p.blush, 0.9),
-            hang: -side * 0.12,
+            hang: -side * 0.1,
             bend: -side * 0.12,
+            tiltX: -0.62,
             pawScale: [0.17, 0.128, 0.155]
           },
           true,
@@ -33275,10 +33279,11 @@ void main() {
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
           x: side * 0.27,
-          y: 0.6,
+          y: 0.43,
           bodyZ: 0.82,
           radius: 0.096,
-          reach: 0.58,
+          reach: 0.68,
+          tilt: -1.25,
           fur: white,
           paw: patches,
           pad: pink,
@@ -33354,7 +33359,7 @@ void main() {
         dragonArms.push(this.softLimb(
           model,
           side,
-          [side * 0.48, 0.88, 0.1],
+          [side * 0.4, 0.72, 0.3],
           {
             upper: 0.13,
             lower: 0.12,
@@ -33362,8 +33367,9 @@ void main() {
             fur,
             pawMat: fur,
             pad: this.material(new Color("#ffe7ae"), 0.92),
-            hang: -side * 0.08,
+            hang: -side * 0.06,
             bend: -side * 0.1,
+            tiltX: -0.7,
             pawScale: [0.19, 0.142, 0.178]
           },
           true,
@@ -33378,7 +33384,16 @@ void main() {
         this.trackLimb(foot, side, false, Math.PI + side * 0.5);
       }
       const head = this.group(model, [0, 1.4, 0.02]);
-      this.sphere(head, fur, [0, 0, 0], [0.62, 0.58, 0.54]);
+      const headGeo = new SphereGeometry(1, 30, 22);
+      const hp = headGeo.attributes.position;
+      for (let i = 0; i < hp.count; i++) {
+        const y = hp.getY(i);
+        const taper = 1 - Math.max(0, y) * 0.26;
+        hp.setX(i, hp.getX(i) * taper);
+        hp.setZ(i, hp.getZ(i) * taper);
+      }
+      headGeo.computeVertexNormals();
+      this.mesh(head, headGeo, fur, [0, 0, 0], [0.6, 0.66, 0.54]);
       const greenIris = new Color("#57b34a");
       for (const side of [-1, 1]) {
         this.eye(head, [side * 0.19, 0.08, 0.44], 0.132, { iris: greenIris, pupil: BLACK, aspect: 1, style: "sparkle" });
@@ -33444,10 +33459,11 @@ void main() {
       for (const side of [-1, 1]) {
         this.frontHand(model, side, {
           x: side * 0.26,
-          y: 0.55,
+          y: 0.4,
           bodyZ: 0.76,
           radius: 0.086,
-          reach: 0.55,
+          reach: 0.62,
+          tilt: -1.25,
           fur: dark,
           paw: dark,
           pad: muzzleMat,
@@ -33516,7 +33532,7 @@ void main() {
         loopyArms.push(this.softLimb(
           model,
           side,
-          [side * 0.45, 0.8, 0.1],
+          [side * 0.38, 0.7, 0.26],
           {
             upper: 0.12,
             lower: 0.11,
@@ -33526,6 +33542,7 @@ void main() {
             pad: this.material(new Color("#f7c3d3"), 0.9),
             hang: raised ? 0.62 : -side * 0.12,
             bend: -side * 0.08,
+            tiltX: raised ? -0.15 : -0.62,
             pawScale: [0.152, 0.114, 0.122]
           },
           true,
@@ -33609,7 +33626,7 @@ void main() {
         const arm = this.softLimb(
           model,
           side,
-          [side * 0.45, 0.8, 0.1],
+          [side * 0.38, 0.68, 0.26],
           {
             upper: 0.12,
             lower: 0.11,
@@ -33617,8 +33634,9 @@ void main() {
             fur,
             pawMat: this.material(p.paw),
             pad: this.material(new Color("#ecd8c0"), 0.92),
-            hang: -side * 0.15,
+            hang: -side * 0.12,
             bend: -side * 0.1,
+            tiltX: -0.62,
             pawScale: [0.17, 0.126, 0.155]
           },
           true,

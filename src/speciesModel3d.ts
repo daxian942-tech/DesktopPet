@@ -74,6 +74,8 @@ interface SoftLimbOptions {
   hang?: number;
   bend?: number;
   wristBend?: number;
+  /** 手臂前后倾角：负值往前伸（朝键盘），0 是垂直下垂 */
+  tiltX?: number;
   pawScale?: Vec3;
   claws?: { color: THREE.Color; count: number; spread: number; size: number; depth: number };
 }
@@ -1015,7 +1017,7 @@ export class IndependentSpecies3D {
     // Pivot stays at the surface, but all geometry is pulled well inside the
     // torso so the capsule's rounded cap is completely hidden - only the
     // tapering shaft emerges, which reads as a limb growing out of the body.
-    const root = this.group(parent, position, [0, 0, opts.hang ?? 0]);
+    const root = this.group(parent, position, [opts.tiltX ?? 0, 0, opts.hang ?? 0]);
     // Only a shallow inward offset now that the Blender limb has its own
     // flared shoulder: the broad root sits on the torso surface as a soft,
     // continuous bulge instead of being a ball joint hidden inside it.
@@ -1136,15 +1138,17 @@ export class IndependentSpecies3D {
       pawScale?: Vec3;
       /** 手往外撇的角度，让两只手呈八字形，不贴着身体。 */
       splay?: number;
+      /** 手臂前倾角：约 -0.92 是斜着垂在前下方，-1.3 接近水平、能伸到键盘上 */
+      tilt?: number;
     },
   ): THREE.Group {
     const r = opts.radius;
     const reach = opts.reach;
-    // 臂根埋在身体内部前半段，整条臂前倾约 53°，从身体前下方伸出来
+    // 臂根埋在身体内部前半段，默认前倾约 53°，从身体前下方伸出来
     const hand = this.group(
       parent,
       [opts.x, opts.y, opts.bodyZ * 0.58],
-      [-0.92, 0, side * (opts.splay ?? 0.14)],
+      [opts.tilt ?? -0.92, 0, side * (opts.splay ?? 0.14)],
     );
     // 短粗圆臂：比原来更粗，Q 版才有"肉感"
     this.capsule(hand, opts.fur, [0, -reach * 0.40, 0], r * 1.02, reach + r * 1.1);
@@ -1176,8 +1180,8 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       // 前爪手：抬到胸前、明显外露，能看清地敲键盘
       this.frontHand(model, side, {
-        x: side * 0.29, y: 0.60, bodyZ: 0.84,
-        radius: 0.095, reach: 0.58, fur, paw: cream,
+        x: side * 0.29, y: 0.43, bodyZ: 0.84,
+        radius: 0.095, reach: 0.68, tilt: -1.25, fur, paw: cream,
         pad: this.material(p.blush, 0.92), splay: 0.10,
       });
       this.stubLeg(model, side * 0.40, 0.36, -0.50, 0.165, 0.26, fur, cream, side, false);
@@ -1217,8 +1221,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.28, y: 0.58, bodyZ: 0.82,
-        radius: 0.090, reach: 0.56, fur, paw: socks, pad: pale, splay: 0.10,
+        x: side * 0.28, y: 0.41, bodyZ: 0.82,
+        radius: 0.090, reach: 0.66, tilt: -1.25, fur, paw: socks, pad: pale, splay: 0.10,
       });
       this.stubLeg(model, side * 0.38, 0.34, -0.48, 0.14, 0.24, socks, socks, side, false);
     }
@@ -1257,8 +1261,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.30, y: 0.62, bodyZ: 0.80,
-        radius: 0.102, reach: 0.58, fur: black, paw: black,
+        x: side * 0.30, y: 0.45, bodyZ: 0.80,
+        radius: 0.102, reach: 0.70, tilt: -1.25, fur: black, paw: black,
         pad: this.material(new THREE.Color('#d6d6dc'), 0.88), splay: 0.10,
       });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.18, 0.25, black, black, side, false);
@@ -1430,12 +1434,12 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       chiArms.push(this.softLimb(
         model, side,
-        [side * 0.42, 0.80, 0.08],
+        [side * 0.36, 0.68, 0.26],
         {
           upper: 0.13, lower: 0.12, radius: 0.13,
           fur, pawMat: fur,
           pad: this.material(p.blush, 0.90),
-          hang: -side * 0.12, bend: -side * 0.12,
+          hang: -side * 0.10, bend: -side * 0.12, tiltX: -0.62,
           pawScale: [0.17, 0.128, 0.155],
         },
         true, side * 0.5,
@@ -1544,8 +1548,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.27, y: 0.60, bodyZ: 0.82,
-        radius: 0.096, reach: 0.58, fur: white, paw: patches, pad: pink, splay: 0.08,
+        x: side * 0.27, y: 0.43, bodyZ: 0.82,
+        radius: 0.096, reach: 0.68, tilt: -1.25, fur: white, paw: patches, pad: pink, splay: 0.08,
       });
       this.stubLeg(model, side * 0.42, 0.36, -0.48, 0.17, 0.25, white, patches, side, false);
     }
@@ -1633,12 +1637,12 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       dragonArms.push(this.softLimb(
         model, side,
-        [side * 0.48, 0.88, 0.10],
+        [side * 0.40, 0.72, 0.30],
         {
           upper: 0.13, lower: 0.12, radius: 0.145,
           fur, pawMat: fur,
           pad: this.material(new THREE.Color('#ffe7ae'), 0.92),
-          hang: -side * 0.08, bend: -side * 0.10,
+          hang: -side * 0.06, bend: -side * 0.10, tiltX: -0.70,
           pawScale: [0.19, 0.142, 0.178],
         },
         true, side * 0.5,
@@ -1652,9 +1656,18 @@ export class IndependentSpecies3D {
       this.trackLimb(foot, side, false, Math.PI + side * 0.5);
     }
 
-    // 超大圆头（无耳无角无翅），亮绿色大圆眼是整张脸的主角
+    // 上窄下宽的蛋形头：竖椭圆轮廓 + 头顶收窄，比正圆更有呆萌感
     const head = this.group(model, [0, 1.40, 0.02]);
-    this.sphere(head, fur, [0, 0, 0], [0.62, 0.58, 0.54]);
+    const headGeo = new THREE.SphereGeometry(1, 30, 22);
+    const hp = headGeo.attributes.position;
+    for (let i = 0; i < hp.count; i++) {
+      const y = hp.getY(i);                    // -1 ~ 1
+      const taper = 1 - Math.max(0, y) * 0.26; // 只收窄上半球，下部保持圆润
+      hp.setX(i, hp.getX(i) * taper);
+      hp.setZ(i, hp.getZ(i) * taper);
+    }
+    headGeo.computeVertexNormals();
+    this.mesh(head, headGeo, fur, [0, 0, 0], [0.60, 0.66, 0.54]);
     const greenIris = new THREE.Color('#57b34a');
     for (const side of [-1, 1] as const) {
       this.eye(head, [side * 0.19, 0.08, 0.44], 0.132, { iris: greenIris, pupil: BLACK, aspect: 1.0, style: 'sparkle' });
@@ -1729,8 +1742,8 @@ export class IndependentSpecies3D {
 
     for (const side of [-1, 1] as const) {
       this.frontHand(model, side, {
-        x: side * 0.26, y: 0.55, bodyZ: 0.76,
-        radius: 0.086, reach: 0.55, fur: dark, paw: dark, pad: muzzleMat, splay: 0.09,
+        x: side * 0.26, y: 0.40, bodyZ: 0.76,
+        radius: 0.086, reach: 0.62, tilt: -1.25, fur: dark, paw: dark, pad: muzzleMat, splay: 0.09,
       });
       this.stubLeg(model, side * 0.38, 0.32, -0.42, 0.15, 0.22, dark, dark, side, false);
     }
@@ -1804,12 +1817,12 @@ export class IndependentSpecies3D {
       const raised = side < 0; // the reference shows the left paw up
       loopyArms.push(this.softLimb(
         model, side,
-        [side * 0.45, 0.80, 0.10],
+        [side * 0.38, 0.70, 0.26],
         {
           upper: 0.12, lower: 0.11, radius: 0.125,
           fur, pawMat: darkPaw,
           pad: this.material(new THREE.Color('#f7c3d3'), 0.90),
-          hang: raised ? 0.62 : -side * 0.12, bend: -side * 0.08,
+          hang: raised ? 0.62 : -side * 0.12, bend: -side * 0.08, tiltX: raised ? -0.15 : -0.62,
           pawScale: [0.152, 0.114, 0.122],
         },
         true, side * 0.5,
@@ -1904,12 +1917,12 @@ export class IndependentSpecies3D {
     for (const side of [-1, 1] as const) {
       const arm = this.softLimb(
         model, side,
-        [side * 0.45, 0.80, 0.10],
+        [side * 0.38, 0.68, 0.26],
         {
           upper: 0.12, lower: 0.11, radius: 0.13,
           fur, pawMat: this.material(p.paw),
           pad: this.material(new THREE.Color('#ecd8c0'), 0.92),
-          hang: -side * 0.15, bend: -side * 0.10,
+          hang: -side * 0.12, bend: -side * 0.10, tiltX: -0.62,
           pawScale: [0.17, 0.126, 0.155],
         },
         true, side * 0.5,
