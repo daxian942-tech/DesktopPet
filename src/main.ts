@@ -2179,26 +2179,25 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
-    // On Windows & macOS (native 120Hz start_pet_drag), wait up to 4px movement or 220ms hold
-    // to cleanly separate Tap (boop nose/tail/chin/head) vs Scruff Drag!
+    // On Windows & macOS (native 120Hz start_pet_drag), separate Tap / Jump / Scruff Drag
+    // purely by DOM mousemove direction.
+    //
+    // 2026-11-28 修正「跳跃不好触发」：
+    //  1. 移除「按住 220ms 就启动窗口拖动」的抢占式定时器 —— 它会把停顿后再下拖、
+    //     慢速下拖直接判成移动窗口，是跳跃难触发的主因。
+    //  2. 只要鼠标产生向下净位移就锁定为跳跃蓄力，不再要求方向比例。
+    //  3. 松手必跳：DOM mouseup 与 kuro-input 全局 mouseUp 双保险。
     const DRAG_THRESHOLD_PX = 4;
     const TAP_MAX_MS = 220;
-    // 跳跃手势参数：明显向下拖 = 蓄力，松手起跳。
-    const JUMP_START_PX = 9;    // 判定为蓄力所需的最小向下位移
+    // 跳跃：只要鼠标往下拖就锁定蓄力，松手必跳。
+    const JUMP_TRIGGER_PX = 3;  // 3px 向下位移即触发（原 9px 太钝）
     const JUMP_FULL_PX = 84;    // 向下拖到 84px 蓄满
     const JUMP_HOLD_MS = 850;   // 按住不动也能靠时长蓄满（鼠标可能拖出透明窗口）
-    const JUMP_TREND_MS = 620;  // 出现向下趋势时延后窗口拖动判定，给慢速下拖留识别窗口
     let settled = false;
-    let holdTimer: number | null = null;
-    let jumpTrendArmed = false;
 
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      if (holdTimer !== null) {
-        window.clearTimeout(holdTimer);
-        holdTimer = null;
-      }
       if (cancelPendingTapVsDrag === onCancel) {
         cancelPendingTapVsDrag = null;
       }
@@ -2225,14 +2224,14 @@ async function bootstrap(): Promise<void> {
       if (nativeDragActive || dragInFlight) return;
 
       const chargeStart = performance.now();
-      let maxDragY = downY + JUMP_START_PX;
+      let maxDragY = downY + JUMP_TRIGGER_PX;
       let raf = 0;
       let done = false;
       engine.beginJumpCharge();
       engine3d?.beginJumpCharge();
 
       const pushCharge = () => {
-        const dragAmt = Math.min(1, Math.max(0, (maxDragY - downY - JUMP_START_PX) / (JUMP_FULL_PX - JUMP_START_PX)));
+        const dragAmt = Math.min(1, Math.max(0, (maxDragY - downY - JUMP_TRIGGER_PX) / (JUMP_FULL_PX - JUMP_TRIGGER_PX)));
         const holdAmt = Math.min(1, Math.max(0, (performance.now() - chargeStart) / JUMP_HOLD_MS));
         const amt = Math.max(dragAmt, holdAmt * 0.96);
         engine.setJumpCharge(amt);
@@ -2291,21 +2290,16 @@ async function bootstrap(): Promise<void> {
       const dx = ev.clientX - downX;
       const dy = ev.clientY - downY;
       const dist = Math.hypot(dx, dy);
-      // 1) 明确向下拖 → 蓄力跳跃，优先于窗口拖动判定
-      if (dy >= JUMP_START_PX && dy > Math.abs(dx) * 1.35) {
+      // 1) 只要产生向下净位移 → 锁定蓄力跳跃。斜着往下拖同样算，
+      //    不再要求「向下必须明显大于横向」的比例，也不再被定时器抢跑。
+      if (dy >= JUMP_TRIGGER_PX) {
         beginJumpCharge();
         return;
       }
-      // 2) 横向 / 向上为主 → 立即走原有的窗口拖动，保持旧手感
-      if (dist >= DRAG_THRESHOLD_PX && dy <= Math.abs(dx) * 1.1) {
+      // 2) 其余方向的拖动 → 走原有的窗口拖动，保持旧手感
+      if (dist >= DRAG_THRESHOLD_PX) {
         beginDrag();
         return;
-      }
-      // 3) 有向下趋势但还没到蓄力阈值 → 延后 220ms 拖动判定，避免慢速下拖被误判
-      if (dy >= 4 && !jumpTrendArmed) {
-        jumpTrendArmed = true;
-        if (holdTimer !== null) window.clearTimeout(holdTimer);
-        holdTimer = window.setTimeout(beginDrag, JUMP_TREND_MS);
       }
     };
 
@@ -2318,12 +2312,13 @@ async function bootstrap(): Promise<void> {
       const dx = ev.clientX - downX;
       const dy = ev.clientY - downY;
       const dist = Math.hypot(dx, dy);
-      // 向下轻扫一下就松手：给一个最小力度的小跳，不弹照顾快捷栏
-      if (dy >= 4 && dy > Math.abs(dx) * 1.1 && dist < JUMP_START_PX && dt <= 400) {
+      // 兜底：某些帧的 mousemove 可能被吞掉，但松手时已出现向下位移，
+      // 仍给一个最小力度的小跳，保证「往下拖就跳」不漏，且不弹照顾快捷栏。
+      if (dy >= JUMP_TRIGGER_PX && dt <= 1200) {
         engine.beginJumpCharge();
         engine3d?.beginJumpCharge();
-        engine.setJumpCharge(0.18);
-        engine3d?.setJumpCharge(0.18);
+        engine.setJumpCharge(0.22);
+        engine3d?.setJumpCharge(0.22);
         engine.releaseJump();
         engine3d?.releaseJump();
         return;
@@ -2350,7 +2345,8 @@ async function bootstrap(): Promise<void> {
     cancelPendingTapVsDrag = onCancel;
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    holdTimer = window.setTimeout(beginDrag, TAP_MAX_MS);
+    // 不再设 220ms 抢占式 beginDrag 定时器：方向完全由 mousemove / mouseup 判定，
+    // 慢速下拖、停顿后再下拖都不会被误判成「移动窗口」，松手必跳。
   };
   canvas3dMouseDownListener = handleCanvasMouseDown;
   canvas.addEventListener('mousedown', handleCanvasMouseDown);

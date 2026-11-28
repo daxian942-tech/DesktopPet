@@ -6,6 +6,11 @@
  * 同一套状态机，因此切物种、切 2D/3D 模式时跳跃行为完全一致。
  *
  * 相位流转：idle -> charging -> rising -> falling -> landing -> idle
+ *
+ * 2026-11-28 修正「跳跃不好触发」：
+ *  - 允许在任意相位重新蓄力（空中再往下拖也能接上下一跳），不再吞掉手势；
+ *  - 从空中打断时用残余高度快速衰减，避免角色瞬间掉地显得抽搐；
+ *  - 蓄力影响跳跃高度，但设 0.72 下限，保证「轻拖一下」也有明显起跳。
  */
 
 export type JumpPhase = 'idle' | 'charging' | 'rising' | 'falling' | 'landing';
@@ -56,6 +61,8 @@ export class JumpMotion {
   private clock = 0;
   /** 截图定格用：冻结相位推进，但仍输出当前姿态 */
   private frozen = false;
+  /** 从空中打断进入蓄力时的残余离地高度，按指数快速衰减，避免瞬间掉地抽搐 */
+  private entryLift = 0;
   /** 复用同一个对象，避免每帧分配 */
   private readonly pose: JumpPose = { ...IDLE_POSE };
 
@@ -67,9 +74,17 @@ export class JumpMotion {
     return this.phase !== 'idle';
   }
 
-  /** 进入蓄力。空中不允许重新蓄力，避免连跳打断落地动画。 */
+  /**
+   * 进入蓄力。允许在任意相位重新开始：空中再次往下拖也能接上下一跳，
+   * 不再把「还在空中」的手势直接丢掉。从空中打断时保留一点残余高度并
+   * 快速衰减，避免角色瞬间掉地显得抽搐。
+   */
   public beginCharge(): void {
-    if (this.phase === 'rising' || this.phase === 'falling') return;
+    const u = clamp01(this.phaseT / this.duration);
+    this.entryLift =
+      this.phase === 'rising' || this.phase === 'falling'
+        ? Math.max(0, 4 * u * (1 - u))
+        : 0;
     this.frozen = false;
     this.phase = 'charging';
     this.chargeTarget = 0;
@@ -90,6 +105,7 @@ export class JumpMotion {
     this.power = clamp01(0.3 + c * 0.7);
     this.duration = 0.4 + this.power * 0.28;
     this.phaseT = 0;
+    this.entryLift = 0;
     this.phase = 'rising';
     this.chargeTarget = 0;
     this.frozen = false;
@@ -100,6 +116,7 @@ export class JumpMotion {
     if (this.phase === 'idle') return;
     this.frozen = false;
     this.chargeTarget = 0;
+    this.entryLift = 0;
     this.phaseT = 0;
     this.phase = 'landing';
   }
@@ -111,9 +128,13 @@ export class JumpMotion {
     switch (this.phase) {
       case 'idle':
         this.chargeSmooth = 0;
+        this.entryLift = 0;
         return IDLE_POSE;
       case 'charging':
         if (!this.frozen) {
+          this.phaseT += d;
+          this.entryLift *= Math.exp(-14 * d);
+          if (this.entryLift < 0.002) this.entryLift = 0;
           this.chargeSmooth +=
             (this.chargeTarget - this.chargeSmooth) * (1 - Math.exp(-16 * d));
         }
@@ -138,6 +159,7 @@ export class JumpMotion {
             this.phase = 'idle';
             this.phaseT = 0;
             this.chargeSmooth = 0;
+            this.entryLift = 0;
             return IDLE_POSE;
           }
         }
@@ -151,6 +173,7 @@ export class JumpMotion {
   public preview(kind: 'charge' | 'air' | 'land', amt = 1): void {
     const a = clamp01(amt);
     this.frozen = true;
+    this.entryLift = 0;
     if (kind === 'charge') {
       this.phase = 'charging';
       this.chargeTarget = a;
@@ -182,20 +205,22 @@ export class JumpMotion {
 
     if (this.phase === 'charging') {
       const c = this.chargeSmooth;
-      p.lift = 0;
+      p.lift = this.entryLift;
       p.crouch = c;
       p.squashY = 1 - 0.2 * c;
       p.squashX = 1 + 0.11 * c;
       // 蓄满时有极轻微的发力抖动，避免像静态压扁
       p.tilt = 0.018 * c + Math.sin(this.clock * 26) * 0.008 * c;
-      p.shadowScale = 1 - 0.08 * c;
-      p.shadowAlpha = 1 - 0.12 * c;
+      p.shadowScale = 1 - 0.08 * c - 0.32 * p.lift;
+      p.shadowAlpha = 1 - 0.12 * c - 0.4 * p.lift;
       return p;
     }
 
     if (this.phase === 'rising' || this.phase === 'falling') {
       const u = clamp01(this.phaseT / this.duration);
-      p.lift = Math.max(0, 4 * u * (1 - u));
+      // 蓄力越满跳得越高；0.72 下限保证「轻拖一下」也有明显起跳
+      const height = 0.72 + 0.28 * this.power;
+      p.lift = Math.max(0, 4 * u * (1 - u)) * height;
       p.crouch = 0;
       // 起跳瞬间纵向拉伸，快落地时预压扁
       const stretch = Math.exp(-u * 9);

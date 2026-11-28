@@ -34390,6 +34390,8 @@ void main() {
     clock = 0;
     /** 截图定格用：冻结相位推进，但仍输出当前姿态 */
     frozen = false;
+    /** 从空中打断进入蓄力时的残余离地高度，按指数快速衰减，避免瞬间掉地抽搐 */
+    entryLift = 0;
     /** 复用同一个对象，避免每帧分配 */
     pose = { ...IDLE_POSE };
     get isCharging() {
@@ -34398,9 +34400,14 @@ void main() {
     get isActive() {
       return this.phase !== "idle";
     }
-    /** 进入蓄力。空中不允许重新蓄力，避免连跳打断落地动画。 */
+    /**
+     * 进入蓄力。允许在任意相位重新开始：空中再次往下拖也能接上下一跳，
+     * 不再把「还在空中」的手势直接丢掉。从空中打断时保留一点残余高度并
+     * 快速衰减，避免角色瞬间掉地显得抽搐。
+     */
     beginCharge() {
-      if (this.phase === "rising" || this.phase === "falling") return;
+      const u = clamp013(this.phaseT / this.duration);
+      this.entryLift = this.phase === "rising" || this.phase === "falling" ? Math.max(0, 4 * u * (1 - u)) : 0;
       this.frozen = false;
       this.phase = "charging";
       this.chargeTarget = 0;
@@ -34419,6 +34426,7 @@ void main() {
       this.power = clamp013(0.3 + c * 0.7);
       this.duration = 0.4 + this.power * 0.28;
       this.phaseT = 0;
+      this.entryLift = 0;
       this.phase = "rising";
       this.chargeTarget = 0;
       this.frozen = false;
@@ -34428,6 +34436,7 @@ void main() {
       if (this.phase === "idle") return;
       this.frozen = false;
       this.chargeTarget = 0;
+      this.entryLift = 0;
       this.phaseT = 0;
       this.phase = "landing";
     }
@@ -34437,9 +34446,13 @@ void main() {
       switch (this.phase) {
         case "idle":
           this.chargeSmooth = 0;
+          this.entryLift = 0;
           return IDLE_POSE;
         case "charging":
           if (!this.frozen) {
+            this.phaseT += d;
+            this.entryLift *= Math.exp(-14 * d);
+            if (this.entryLift < 2e-3) this.entryLift = 0;
             this.chargeSmooth += (this.chargeTarget - this.chargeSmooth) * (1 - Math.exp(-16 * d));
           }
           break;
@@ -34463,6 +34476,7 @@ void main() {
               this.phase = "idle";
               this.phaseT = 0;
               this.chargeSmooth = 0;
+              this.entryLift = 0;
               return IDLE_POSE;
             }
           }
@@ -34474,6 +34488,7 @@ void main() {
     preview(kind, amt = 1) {
       const a = clamp013(amt);
       this.frozen = true;
+      this.entryLift = 0;
       if (kind === "charge") {
         this.phase = "charging";
         this.chargeTarget = a;
@@ -34503,18 +34518,19 @@ void main() {
       p.tilt = 0;
       if (this.phase === "charging") {
         const c = this.chargeSmooth;
-        p.lift = 0;
+        p.lift = this.entryLift;
         p.crouch = c;
         p.squashY = 1 - 0.2 * c;
         p.squashX = 1 + 0.11 * c;
         p.tilt = 0.018 * c + Math.sin(this.clock * 26) * 8e-3 * c;
-        p.shadowScale = 1 - 0.08 * c;
-        p.shadowAlpha = 1 - 0.12 * c;
+        p.shadowScale = 1 - 0.08 * c - 0.32 * p.lift;
+        p.shadowAlpha = 1 - 0.12 * c - 0.4 * p.lift;
         return p;
       }
       if (this.phase === "rising" || this.phase === "falling") {
         const u2 = clamp013(this.phaseT / this.duration);
-        p.lift = Math.max(0, 4 * u2 * (1 - u2));
+        const height = 0.72 + 0.28 * this.power;
+        p.lift = Math.max(0, 4 * u2 * (1 - u2)) * height;
         p.crouch = 0;
         const stretch = Math.exp(-u2 * 9);
         const preLand = u2 > 0.82 ? (u2 - 0.82) / 0.18 : 0;
