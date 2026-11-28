@@ -21,27 +21,35 @@
       var t = qs.get('t');
       var mood = qs.get('mood');
       var typing = qs.get('typing');
+      // ?reach=<0..1>：直接固定「手伸到键盘」的进度，用于确定性截图。
+      // 无头 Chrome 的虚拟时间不推进真实 elapsed，暂停/收回这类基于时间的
+      // 状态机没法静态验证，所以用固定进度展示伸缩的三个关键帧。
+      var reach = qs.get('reach');
       if (!pet) return;
       function ready() {
         if (typeof window.showPet !== 'function') { setTimeout(ready, 40); return; }
         window.showPet(pet);
-        if (t === null && !mood && !typing) return;
-      function seek() {
-        if (!window.petEngine) { setTimeout(seek, 40); return; }
-        if (t !== null) window.petEngine.elapsed = parseFloat(t);
-        window.petEngine.lastFrameMs = performance.now();
-        if (mood) window.petEngine.triggerCareMood(mood, 60);
-        if (typing) {
-          window.petEngine.paws.L.down = typing === 'right' ? false : true;
-          window.petEngine.paws.R.down = typing === 'left' ? false : true;
+        // reach 也要能单独生效，否则只传 ?reach= 时会被提前 return 掉。
+        if (t === null && !mood && !typing && reach === null) return;
+        function seek() {
+          if (!window.petEngine) { setTimeout(seek, 40); return; }
+          if (t !== null) window.petEngine.elapsed = parseFloat(t);
+          window.petEngine.lastFrameMs = performance.now();
+          if (mood) window.petEngine.triggerCareMood(mood, 60);
+          if (typing) {
+            window.petEngine.paws.L.down = typing === 'right' ? false : true;
+            window.petEngine.paws.R.down = typing === 'left' ? false : true;
+          }
+          if (reach !== null && window.petEngine.speciesModels) {
+            window.petEngine.speciesModels.previewHandReach = parseFloat(reach);
+          }
+          // 带 t 参数 = 确定性截图：渲染一两帧到目标时刻后立即冻结画面
+          if (t !== null) {
+            requestAnimationFrame(function () {
+              requestAnimationFrame(function () { window.petEngine.stop(); });
+            });
+          }
         }
-        // 带 t 参数 = 确定性截图：渲染一两帧到目标时刻后立即冻结画面
-        if (t !== null) {
-          requestAnimationFrame(function () {
-            requestAnimationFrame(function () { window.petEngine.stop(); });
-          });
-        }
-      }
         seek();
       }
       ready();

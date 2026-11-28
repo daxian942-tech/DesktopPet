@@ -32116,6 +32116,12 @@ void main() {
     activeExpression = "idle";
     typingPress = { left: 0, right: 0 };
     typingPhase = { left: 0, right: 0 };
+    /** 手伸到键盘的程度：0 = 收在身前的小圆爪，1 = 搭在键帽上 */
+    handReach = 0;
+    /** 仅预览工具使用：非 null 时固定伸缩进度、跳过时间状态机（正式运行恒为 null） */
+    previewHandReach = null;
+    /** 最后一次按键时间；停手后延迟一小段才收手，避免字间来回抽 */
+    lastTypingTime = -100;
     lastUpdateTime = 0;
     constructor(scene) {
       this.root.name = "independent-species-root";
@@ -32247,10 +32253,29 @@ void main() {
       this.typingPress.right = easePress(options.typingRight, this.typingPress.right);
       const tapLeft = this.typingPress.left;
       const tapRight = this.typingPress.right;
+      if (this.previewHandReach !== null) {
+        this.handReach = Math.max(0, Math.min(1, this.previewHandReach));
+      } else {
+        if (options.typingLeft || options.typingRight) this.lastTypingTime = time;
+        const wantReach = time - this.lastTypingTime < 0.5 ? 1 : 0;
+        const reachRate = wantReach > this.handReach ? 12 : 4.5;
+        this.handReach += (wantReach - this.handReach) * (1 - Math.exp(-reachRate * dt));
+      }
       for (const limb of this.limbs) {
         limb.node.position.copy(limb.position);
         limb.node.rotation.copy(limb.rotation);
         limb.node.scale.copy(limb.scale);
+        if (limb.handPose) {
+          const hp = limb.handPose;
+          const r = this.handReach;
+          limb.node.position.set(
+            hp.restPos[0] + (hp.typePos[0] - hp.restPos[0]) * r,
+            hp.restPos[1] + (hp.typePos[1] - hp.restPos[1]) * r,
+            hp.restPos[2] + (hp.typePos[2] - hp.restPos[2]) * r
+          );
+          limb.node.rotation.x = hp.restRotX + (hp.typeRotX - hp.restRotX) * r;
+          limb.node.scale.setScalar(hp.restScale + (1 - hp.restScale) * r);
+        }
         limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.01 * awake;
         if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
         if (limb.paw && limb.pawBaseY !== void 0) {
@@ -32263,7 +32288,7 @@ void main() {
       for (const limb of this.limbs) {
         if (!limb.arm) continue;
         const isLeft = limb.side < 0;
-        const tap = (isLeft ? tapLeft : tapRight) * awake;
+        const tap = (isLeft ? tapLeft : tapRight) * awake * this.handReach;
         if (tap < 2e-3) continue;
         limb.node.rotation.x += 0.028 * tap;
         limb.node.rotation.z += limb.side * 8e-3 * tap;
@@ -32923,6 +32948,16 @@ void main() {
         this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
       }
       this.trackLimb(hand, side, true, side * 0.5, void 0, true, paw);
+      const ref = this.limbs[this.limbs.length - 1];
+      ref.handPose = {
+        typePos: rootPos,
+        // 收起时掌要落在身体前表面「之外」才看得见（收太靠里会被身体球整个吞掉）。
+        // 肩点略抬高、手臂缩到 0.62 且保持前伸，掌就停在肚皮前，像抱着的小圆爪。
+        restPos: [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
+        typeRotX: tilt,
+        restRotX: -1,
+        restScale: 0.62
+      };
       return hand;
     }
     buildDog() {
@@ -33764,6 +33799,8 @@ void main() {
       this.typingPress.right = 0;
       this.typingPhase.left = 0;
       this.typingPhase.right = 0;
+      this.handReach = 0;
+      this.lastTypingTime = -100;
       this.lastUpdateTime = 0;
     }
   };

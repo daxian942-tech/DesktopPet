@@ -43,6 +43,22 @@ interface LimbRef extends PartRef {
   /** 手掌节点：打字时沿手臂方向把掌压向键帽，而不是整臂乱转导致脱键。 */
   paw?: THREE.Object3D;
   pawBaseY?: number;
+  /** 打字手的「收起 / 伸出」两套姿态：待机缩在身前，打字才伸到键盘上。 */
+  handPose?: HandPose;
+}
+
+/** 打字手的两套基准姿态，update() 按 handReach 在两者间插值。 */
+interface HandPose {
+  /** 收起时肩点位置（更靠身体、略抬高） */
+  restPos: Vec3;
+  /** 打字时肩点位置（frontHand 的原始 rootPos） */
+  typePos: Vec3;
+  /** 收起时手臂前倾角（更接近垂直下垂） */
+  restRotX: number;
+  /** 打字时手臂前倾角（由键帽落点反算） */
+  typeRotX: number;
+  /** 收起时整只手的缩放：缩成贴身小圆爪 */
+  restScale: number;
 }
 
 /** The same motion inputs the generic animation loop receives. */
@@ -191,6 +207,12 @@ export class IndependentSpecies3D {
   private activeExpression: FaceExpression = 'idle';
   private readonly typingPress: Record<'left' | 'right', number> = { left: 0, right: 0 };
   private readonly typingPhase: Record<'left' | 'right', number> = { left: 0, right: 0 };
+  /** 手伸到键盘的程度：0 = 收在身前的小圆爪，1 = 搭在键帽上 */
+  private handReach = 0;
+  /** 仅预览工具使用：非 null 时固定伸缩进度、跳过时间状态机（正式运行恒为 null） */
+  public previewHandReach: number | null = null;
+  /** 最后一次按键时间；停手后延迟一小段才收手，避免字间来回抽 */
+  private lastTypingTime = -100;
   private lastUpdateTime = 0;
 
   constructor(scene: THREE.Scene) {
@@ -381,10 +403,34 @@ export class IndependentSpecies3D {
     const tapLeft = this.typingPress.left;
     const tapRight = this.typingPress.right;
 
+    // 手的伸缩状态机：打字时伸到键盘，停手 0.5s 后才收回。
+    // 伸出快（约 0.15s）、收回慢（约 0.45s），打字间隙不会来回抽；
+    // 待机时手缩成贴身小圆爪，不再一直架在键帽上。
+    if (this.previewHandReach !== null) {
+      // 预览页 ?reach= 的确定性定格（无头 Chrome 虚拟时间不推进，时间状态机没法截图）
+      this.handReach = Math.max(0, Math.min(1, this.previewHandReach));
+    } else {
+      if (options.typingLeft || options.typingRight) this.lastTypingTime = time;
+      const wantReach = time - this.lastTypingTime < 0.5 ? 1 : 0;
+      const reachRate = wantReach > this.handReach ? 12 : 4.5;
+      this.handReach += (wantReach - this.handReach) * (1 - Math.exp(-reachRate * dt));
+    }
+
     for (const limb of this.limbs) {
       limb.node.position.copy(limb.position);
       limb.node.rotation.copy(limb.rotation);
       limb.node.scale.copy(limb.scale);
+      if (limb.handPose) {
+        const hp = limb.handPose;
+        const r = this.handReach;
+        limb.node.position.set(
+          hp.restPos[0] + (hp.typePos[0] - hp.restPos[0]) * r,
+          hp.restPos[1] + (hp.typePos[1] - hp.restPos[1]) * r,
+          hp.restPos[2] + (hp.typePos[2] - hp.restPos[2]) * r,
+        );
+        limb.node.rotation.x = hp.restRotX + (hp.typeRotX - hp.restRotX) * r;
+        limb.node.scale.setScalar(hp.restScale + (1 - hp.restScale) * r);
+      }
       limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.010 * awake;
       if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
       // 手掌每帧回到基准位，打字位移才不会累积
@@ -407,7 +453,8 @@ export class IndependentSpecies3D {
     for (const limb of this.limbs) {
       if (!limb.arm) continue;
       const isLeft = limb.side < 0;
-      const tap = (isLeft ? tapLeft : tapRight) * awake;
+      // 手没伸到键盘上就不按键，避免收起状态下空按
+      const tap = (isLeft ? tapLeft : tapRight) * awake * this.handReach;
       if (tap < 0.002) continue;
       limb.node.rotation.x += 0.028 * tap;
       limb.node.rotation.z += limb.side * 0.008 * tap;
@@ -1295,6 +1342,18 @@ export class IndependentSpecies3D {
       this.sphere(paw, opts.pad, [0, -ps[1] * 0.02, ps[2] * 0.86], [ps[0] * 0.66, ps[1] * 0.58, ps[2] * 0.26], [0, 0, 0], 16);
     }
     this.trackLimb(hand, side, true, side * 0.5, undefined, true, paw);
+    // 平时手是收在身前的小圆爪，只有打字才伸到键帽上。两套姿态存在 limb 上，
+    // update() 按 handReach 插值；这样静止时不会一直「架」在键盘上。
+    const ref = this.limbs[this.limbs.length - 1];
+    ref.handPose = {
+      typePos: rootPos,
+      // 收起时掌要落在身体前表面「之外」才看得见（收太靠里会被身体球整个吞掉）。
+      // 肩点略抬高、手臂缩到 0.62 且保持前伸，掌就停在肚皮前，像抱着的小圆爪。
+      restPos: [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
+      typeRotX: tilt,
+      restRotX: -1.00,
+      restScale: 0.62,
+    };
     return hand;
   }
 
@@ -2188,6 +2247,8 @@ export class IndependentSpecies3D {
     this.typingPress.right = 0;
     this.typingPhase.left = 0;
     this.typingPhase.right = 0;
+    this.handReach = 0;
+    this.lastTypingTime = -100;
     this.lastUpdateTime = 0;
   }
 }

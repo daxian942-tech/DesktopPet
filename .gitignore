@@ -36,6 +36,8 @@ _keyboard_shots/
 _motions/
 _redraw2d/
 _redraw3d/
+_redraw3d_typing/
+_hand_pose/
 _ui_shots/
 _flat_typing/
 _cat_ref/
