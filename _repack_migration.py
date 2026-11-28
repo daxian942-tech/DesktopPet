@@ -41,7 +41,7 @@ skip = {
     "_expr3d", "_expr2d", "_kb_shots", "_flat_typing", "_species_shots",
     "_video_probe", "_ui_shots", "_update_shots", "_care_shots",
     "_motions", "_redraw2d", "_redraw3d", "_redraw3d_typing", "_hand_pose",
-    "_keyboard_shots",
+    "_milk_ref", "_keyboard_shots",
 }
 exclude_names = {out.name, "_migration_old.zip", "_DesktopPet-绿色版-旧版备份.exe"}
 

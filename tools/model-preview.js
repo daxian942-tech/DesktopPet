@@ -32274,7 +32274,16 @@ void main() {
             hp.restPos[2] + (hp.typePos[2] - hp.restPos[2]) * r
           );
           limb.node.rotation.x = hp.restRotX + (hp.typeRotX - hp.restRotX) * r;
-          limb.node.scale.setScalar(hp.restScale + (1 - hp.restScale) * r);
+          const s = hp.restScale + (1 - hp.restScale) * r;
+          if (hp.restScaleY !== void 0) {
+            limb.node.scale.set(s, hp.restScaleY + (1 - hp.restScaleY) * r, s);
+          } else {
+            limb.node.scale.setScalar(s);
+          }
+          if (hp.restRotZ !== void 0) {
+            const tz = hp.typeRotZ ?? limb.rotation.z;
+            limb.node.rotation.z = hp.restRotZ + (tz - hp.restRotZ) * r;
+          }
         }
         limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.01 * awake;
         if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
@@ -32898,16 +32907,27 @@ void main() {
         const paw = this.material(p.paw);
         const pad = this.material(p.blush, 0.92);
         const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
+        const isDragon = species === "milkdragon";
+        const dragonFur = isDragon ? this.material(p.secondary) : fur;
         for (const side of [-1, 1]) {
           this.frontHand(model, side, {
-            x: side * 0.3,
+            x: side * (isDragon ? 0.34 : 0.3),
             y: shoulderY,
-            bodyZ: 0.62,
-            radius: 0.098,
-            fur,
-            paw,
-            pad,
-            splay: 0.1
+            bodyZ: isDragon ? 0.68 : 0.62,
+            radius: isDragon ? 0.125 : 0.098,
+            fur: dragonFur,
+            paw: isDragon ? dragonFur : paw,
+            pad: isDragon ? void 0 : pad,
+            pawScale: isDragon ? [0.19, 0.15, 0.18] : void 0,
+            splay: isDragon ? 0.04 : 0.1,
+            restPose: isDragon ? {
+              // 肩点抬高到胸口，纵向压短 + 横向内收，掌在肚皮上方靠拢 = 双臂环抱
+              restPos: [side * 0.22, shoulderY + 0.34, 0.34],
+              restRotX: -0.8,
+              restRotZ: -side * 1.05,
+              restScale: 0.82,
+              restScaleY: 0.42
+            } : void 0
           });
         }
       }
@@ -32949,14 +32969,16 @@ void main() {
       }
       this.trackLimb(hand, side, true, side * 0.5, void 0, true, paw);
       const ref = this.limbs[this.limbs.length - 1];
+      const rp = opts.restPose;
       ref.handPose = {
         typePos: rootPos,
         // 收起时掌要落在身体前表面「之外」才看得见（收太靠里会被身体球整个吞掉）。
         // 肩点略抬高、手臂缩到 0.62 且保持前伸，掌就停在肚皮前，像抱着的小圆爪。
-        restPos: [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
+        restPos: rp?.restPos ?? [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
         typeRotX: tilt,
-        restRotX: -1,
-        restScale: 0.62
+        restRotX: rp?.restRotX ?? -1,
+        restRotZ: rp?.restRotZ,
+        restScale: rp?.restScale ?? 0.62
       };
       return hand;
     }
@@ -33386,102 +33408,68 @@ void main() {
         if (this.head) this.head.node.rotation.y += jerk * 0.28 * awake;
       });
     }
+    /**
+     * 奶龙（按用户参考图重做）：超大正圆亮黄头 + 橙色身体四肢 + 粉白大肚皮，
+     * 白眼圈墨绿瞳、只有一条细弧线微笑、短粗腿带灰褐脚趾、头顶无呆毛。
+     * 原图是柔和 3D 渐变，这里用「亮黄头 / 橙身体」两块纯色近似，
+     * 保持和猫咪一致的 MeshBasicMaterial 纯色扁平风，不加高光。
+     * 手臂由 buildSpecies() 统一补的 frontHand 承担：待机环抱胸前、打字伸到键盘。
+     */
     buildMilkDragon() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const belly = this.material(p.belly);
+      const headFur = this.material(p.fur);
+      const bodyFur = this.material(p.secondary);
+      const bellyMat = this.material(new Color("#fff1ef"));
       const ink = this.material(p.mouth);
-      const claw = this.material(new Color("#6b3a1f"));
-      const body = this.group(model, [0, 0.62, 0]);
-      this.proto(body, "dragon_belly", fur, [0, 0, 0], [0.62, 0.56, 0.5]);
-      const duang = this.proto(body, "dragon_belly", belly, [0, -0.06, 0.36], [0.46, 0.44, 0.32]);
+      const toeMat = this.material(new Color("#8a7466"));
+      const iris = new Color("#2f6b46");
+      const body = this.group(model, [0, 0.6, 0]);
+      this.sphere(body, bodyFur, [0, 0, 0], [0.6, 0.54, 0.5]);
+      const duang = this.sphere(body, bellyMat, [0, -0.05, 0.4], [0.47, 0.45, 0.24]);
       this.trackBody(body);
-      const dragonArms = [];
       for (const side of [-1, 1]) {
-        dragonArms.push(this.softLimb(
-          model,
-          side,
-          [side * 0.4, 0.72, 0.3],
-          {
-            upper: 0.13,
-            lower: 0.12,
-            radius: 0.145,
-            fur,
-            pawMat: fur,
-            pad: this.material(new Color("#ffe7ae"), 0.92),
-            hang: -side * 0.06,
-            bend: -side * 0.1,
-            tiltX: -0.7,
-            pawScale: [0.19, 0.142, 0.178]
-          },
-          true,
-          side * 0.5
-        ));
-        const foot = this.group(model, [side * 0.28, 0.11, 0.28]);
-        this.sphere(foot, fur, [0, 0, 0], [0.23, 0.11, 0.29], [0, 0, 0], 20);
-        this.sphere(foot, belly, [0, -0.04, 0.22], [0.14, 0.05, 0.07], [0, 0, 0], 16);
-        for (const dx of [-0.07, 0, 0.07]) {
-          this.sphere(foot, claw, [dx, 0.01, 0.27], [0.035, 0.025, 0.025], [0, 0, 0], 12);
+        const leg = this.group(model, [side * 0.3, 0.3, 0.14]);
+        this.capsule(leg, bodyFur, [0, -0.14, 0], 0.2, 0.34);
+        this.sphere(leg, bodyFur, [0, -0.28, 0.06], [0.23, 0.12, 0.28]);
+        for (const dx of [-0.075, 0, 0.075]) {
+          this.sphere(leg, toeMat, [dx, -0.29, 0.3], [0.036, 0.026, 0.026]);
         }
-        this.trackLimb(foot, side, false, Math.PI + side * 0.5);
+        this.trackLimb(leg, side, false, Math.PI + side * 0.5);
       }
       const head = this.group(model, [0, 1.4, 0.02]);
-      const headGeo = new SphereGeometry(1, 30, 22);
-      const hp = headGeo.attributes.position;
-      for (let i = 0; i < hp.count; i++) {
-        const y = hp.getY(i);
-        const taper = 1 - Math.max(0, y) * 0.26;
-        hp.setX(i, hp.getX(i) * taper);
-        hp.setZ(i, hp.getZ(i) * taper);
-      }
-      headGeo.computeVertexNormals();
-      this.mesh(head, headGeo, fur, [0, 0, 0], [0.6, 0.66, 0.54]);
-      const greenIris = new Color("#57b34a");
+      this.sphere(head, headFur, [0, 0, 0], [0.76, 0.64, 0.6], [0, 0, 0], 30);
       for (const side of [-1, 1]) {
-        this.eye(head, [side * 0.19, 0.08, 0.44], 0.132, { iris: greenIris, pupil: BLACK, aspect: 1, style: "sparkle" });
+        this.eye(head, [side * 0.245, -0.03, 0.6], 0.108, {
+          iris,
+          pupil: BLACK,
+          aspect: 1,
+          style: "round",
+          sclera: true,
+          depth: 0.34,
+          pupilScale: 0.54,
+          glint: true
+        });
       }
-      for (const side of [-1, 1]) {
-        this.sphere(head, ink, [side * 0.05, -0.16, 0.53], [0.018, 0.014, 0.012], [0, 0, 0], 10);
-      }
-      this.mouthCurve(head, [0, -0.28, 0.49], 0.17, 0.01, ink, 0.016);
+      this.mouthCurve(head, [0, -0.27, 0.59], 0.15, 0.012, ink, 0.013);
       this.trackHead(head);
       const flameMat = this.material(new Color("#ff9a3c"), 0.5);
-      const flame = this.group(head, [0.2, -0.36, 0.42], [Math.PI / 2 - 0.35, 0, 0]);
-      this.cone(flame, flameMat, [0, 0.06, 0], 0.055, 0.16, [1, 1, 1], [0, 0, 0], 10);
+      const flame = this.group(head, [0.24, -0.32, 0.5], [Math.PI / 2 - 0.35, 0, 0]);
+      this.cone(flame, flameMat, [0, 0.05, 0], 0.045, 0.13, [1, 1, 1], [0, 0, 0], 10);
       flame.visible = false;
       const tail = this.group(model, [0, 0.52, -0.42]);
-      this.sphere(tail, fur, [0, 0, 0], [0.155, 0.155, 0.155], [0, 0, 0], 18);
+      this.sphere(tail, bodyFur, [0, 0, 0], [0.155, 0.155, 0.155], [0, 0, 0], 18);
       this.trackTail(tail);
       this.motion((time, state) => {
         const awake = 1 - state.sleep;
-        const wobble = Math.sin(time * 2.5) * 0.02 * awake;
-        duang.scale.set(0.46 * (1 + wobble), 0.44 * (1 - wobble * 0.7), 0.32);
+        const wobble = Math.sin(time * 2.5) * 0.016 * awake;
+        duang.scale.set(0.47 * (1 + wobble), 0.45 * (1 - wobble * 0.7), 0.24);
+        model.position.x += Math.sin(time * 1.35) * 6e-3 * awake;
+        if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.016 * awake;
         const cycle = (time % 8.6 + 8.6) % 8.6;
         const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin((cycle - 3.2) / 2.2 * Math.PI) : 0;
-        duang.scale.x *= 1 + duangBeat * 0.16;
-        duang.scale.y *= 1 - duangBeat * 0.11;
-        flame.visible = awake > 0.4 && duangBeat > 0.45;
-        if (flame.visible) {
-          flame.scale.setScalar(0.7 + duangBeat * 0.6);
-          flame.rotation.z = Math.sin(time * 3.6) * 0.07;
-        }
-        model.position.x += Math.sin(time * 1.35) * 8e-3 * awake;
-        if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.022 * awake;
-        if (this.head) this.head.node.position.y += duangBeat * 0.025;
-        const wave = beatMotion(time, 8.6, 3.2, 5.4);
-        for (const limb of this.limbs) {
-          if (!limb.front) continue;
-          limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.045 * awake;
-          limb.node.rotation.z += limb.side * wave * 0.22;
-          limb.node.position.y += wave * 0.05;
-        }
-        for (const arm of dragonArms) {
-          const elbow = followBeat(time, 8.6, 3.2, 5.4, 0.12);
-          const wrist = followBeat(time, 8.6, 3.2, 5.4, 0.24);
-          arm.elbow.rotation.z = -arm.side * 0.1 + arm.side * elbow * 0.26;
-          arm.wrist.rotation.z = arm.side * wrist * 0.22;
-        }
+        flame.visible = awake > 0.4 && duangBeat > 0.6;
+        if (flame.visible) flame.scale.setScalar(0.6 + duangBeat * 0.5);
       });
     }
     buildCapybara() {

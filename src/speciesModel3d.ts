@@ -57,8 +57,14 @@ interface HandPose {
   restRotX: number;
   /** 打字时手臂前倾角（由键帽落点反算） */
   typeRotX: number;
+  /** 收起时手臂绕 Z 的内收角（负 side 方向 = 向内抱），不填则沿用初始 splay */
+  restRotZ?: number;
+  /** 打字时手臂绕 Z 的角度，不填则沿用初始 splay */
+  typeRotZ?: number;
   /** 收起时整只手的缩放：缩成贴身小圆爪 */
   restScale: number;
+  /** 收起时额外的纵向压缩：手臂变短变粗（奶龙抱胸臂用），不填则等比缩放 */
+  restScaleY?: number;
 }
 
 /** The same motion inputs the generic animation loop receives. */
@@ -429,7 +435,19 @@ export class IndependentSpecies3D {
           hp.restPos[2] + (hp.typePos[2] - hp.restPos[2]) * r,
         );
         limb.node.rotation.x = hp.restRotX + (hp.typeRotX - hp.restRotX) * r;
-        limb.node.scale.setScalar(hp.restScale + (1 - hp.restScale) * r);
+        const s = hp.restScale + (1 - hp.restScale) * r;
+        if (hp.restScaleY !== undefined) {
+          // 非等比：横向保持粗、纵向压短，待机时像一对短粗的环抱胳膊
+          limb.node.scale.set(s, hp.restScaleY + (1 - hp.restScaleY) * r, s);
+        } else {
+          limb.node.scale.setScalar(s);
+        }
+        // 只有显式定制了 restRotZ 的物种（奶龙抱胸臂）才插值 Z 倾角，
+        // 其余物种保持原来的外撇 splay，行为完全不变。
+        if (hp.restRotZ !== undefined) {
+          const tz = hp.typeRotZ ?? limb.rotation.z;
+          limb.node.rotation.z = hp.restRotZ + (tz - hp.restRotZ) * r;
+        }
       }
       limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.010 * awake;
       if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
@@ -1247,16 +1265,29 @@ export class IndependentSpecies3D {
       const paw = this.material(p.paw);
       const pad = this.material(p.blush, 0.92);
       const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
+      // 奶龙按用户参考图：待机是「两只粗短手臂环抱胸前」，橙色、无对比色掌垫；
+      // 打字时才放开、伸到键帽上。其余 11 只保持原来的贴身小圆爪，行为不变。
+      const isDragon = species === 'milkdragon';
+      const dragonFur = isDragon ? this.material(p.secondary) : fur;
       for (const side of [-1, 1] as const) {
         this.frontHand(model, side, {
-          x: side * 0.30,
+          x: side * (isDragon ? 0.34 : 0.30),
           y: shoulderY,
-          bodyZ: 0.62,
-          radius: 0.098,
-          fur,
-          paw,
-          pad,
-          splay: 0.10,
+          bodyZ: isDragon ? 0.68 : 0.62,
+          radius: isDragon ? 0.125 : 0.098,
+          fur: dragonFur,
+          paw: isDragon ? dragonFur : paw,
+          pad: isDragon ? undefined : pad,
+          pawScale: isDragon ? [0.19, 0.15, 0.18] : undefined,
+          splay: isDragon ? 0.04 : 0.10,
+          restPose: isDragon ? {
+            // 肩点抬高到胸口，纵向压短 + 横向内收，掌在肚皮上方靠拢 = 双臂环抱
+            restPos: [side * 0.22, shoulderY + 0.34, 0.34],
+            restRotX: -0.80,
+            restRotZ: -side * 1.05,
+            restScale: 0.82,
+            restScaleY: 0.42,
+          } : undefined,
         });
       }
     }
@@ -1313,6 +1344,14 @@ export class IndependentSpecies3D {
       splay?: number;
       /** @deprecated 现在由键帽落点自动反算 */
       tilt?: number;
+      /** 待机姿态定制：奶龙用它做「双臂环抱胸前」，其余物种走默认贴身小圆爪 */
+      restPose?: {
+        restPos?: Vec3;
+        restRotX?: number;
+        restRotZ?: number;
+        restScale?: number;
+        restScaleY?: number;
+      };
     },
   ): THREE.Group {
     this.hasTypingHands = true;
@@ -1345,14 +1384,16 @@ export class IndependentSpecies3D {
     // 平时手是收在身前的小圆爪，只有打字才伸到键帽上。两套姿态存在 limb 上，
     // update() 按 handReach 插值；这样静止时不会一直「架」在键盘上。
     const ref = this.limbs[this.limbs.length - 1];
+    const rp = opts.restPose;
     ref.handPose = {
       typePos: rootPos,
       // 收起时掌要落在身体前表面「之外」才看得见（收太靠里会被身体球整个吞掉）。
       // 肩点略抬高、手臂缩到 0.62 且保持前伸，掌就停在肚皮前，像抱着的小圆爪。
-      restPos: [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
+      restPos: rp?.restPos ?? [rootPos[0], rootPos[1] + 0.27, rootPos[2] * 0.85],
       typeRotX: tilt,
-      restRotX: -1.00,
-      restScale: 0.62,
+      restRotX: rp?.restRotX ?? -1.00,
+      restRotZ: rp?.restRotZ,
+      restScale: rp?.restScale ?? 0.62,
     };
     return hand;
   }
@@ -1810,107 +1851,76 @@ export class IndependentSpecies3D {
     });
   }
 
+  /**
+   * 奶龙（按用户参考图重做）：超大正圆亮黄头 + 橙色身体四肢 + 粉白大肚皮，
+   * 白眼圈墨绿瞳、只有一条细弧线微笑、短粗腿带灰褐脚趾、头顶无呆毛。
+   * 原图是柔和 3D 渐变，这里用「亮黄头 / 橙身体」两块纯色近似，
+   * 保持和猫咪一致的 MeshBasicMaterial 纯色扁平风，不加高光。
+   * 手臂由 buildSpecies() 统一补的 frontHand 承担：待机环抱胸前、打字伸到键盘。
+   */
   private buildMilkDragon(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const belly = this.material(p.belly);
+    const headFur = this.material(p.fur);
+    const bodyFur = this.material(p.secondary);
+    const bellyMat = this.material(new THREE.Color('#fff1ef'));
     const ink = this.material(p.mouth);
-    const claw = this.material(new THREE.Color('#6b3a1f'));
+    const toeMat = this.material(new THREE.Color('#8a7466'));
+    const iris = new THREE.Color('#2f6b46');
 
-    const body = this.group(model, [0, 0.62, 0]);
-    // Blender barrel torso: a rounded, jiggly mass rather than a plain sphere.
-    this.proto(body, 'dragon_belly', fur, [0, 0, 0], [0.62, 0.56, 0.50]);
-    // The duang belly is a front-facing dome, not a flat bib.
-    const duang = this.proto(body, 'dragon_belly', belly, [0, -0.06, 0.36], [0.46, 0.44, 0.32]);
+    // 躯干：矮圆桶 + 正面粉白大肚皮（参考图肚皮占躯干正面大半）
+    const body = this.group(model, [0, 0.60, 0]);
+    this.sphere(body, bodyFur, [0, 0, 0], [0.60, 0.54, 0.50]);
+    const duang = this.sphere(body, bellyMat, [0, -0.05, 0.40], [0.47, 0.45, 0.24]);
     this.trackBody(body);
 
-    const dragonArms: SoftLimbRef[] = [];
+    // 短粗柱状腿 + 三颗灰褐圆脚趾
     for (const side of [-1, 1] as const) {
-      dragonArms.push(this.softLimb(
-        model, side,
-        [side * 0.40, 0.72, 0.30],
-        {
-          upper: 0.13, lower: 0.12, radius: 0.145,
-          fur, pawMat: fur,
-          pad: this.material(new THREE.Color('#ffe7ae'), 0.92),
-          hang: -side * 0.06, bend: -side * 0.10, tiltX: -0.70,
-          pawScale: [0.19, 0.142, 0.178],
-        },
-        true, side * 0.5,
-      ));
-      const foot = this.group(model, [side * 0.28, 0.11, 0.28]);
-      this.sphere(foot, fur, [0, 0, 0], [0.23, 0.11, 0.29], [0, 0, 0], 20);
-      this.sphere(foot, belly, [0, -0.04, 0.22], [0.14, 0.05, 0.07], [0, 0, 0], 16);
-      for (const dx of [-0.07, 0, 0.07]) {
-        this.sphere(foot, claw, [dx, 0.01, 0.27], [0.035, 0.025, 0.025], [0, 0, 0], 12);
+      const leg = this.group(model, [side * 0.30, 0.30, 0.14]);
+      this.capsule(leg, bodyFur, [0, -0.14, 0], 0.20, 0.34);
+      this.sphere(leg, bodyFur, [0, -0.28, 0.06], [0.23, 0.12, 0.28]);
+      for (const dx of [-0.075, 0, 0.075]) {
+        this.sphere(leg, toeMat, [dx, -0.29, 0.30], [0.036, 0.026, 0.026]);
       }
-      this.trackLimb(foot, side, false, Math.PI + side * 0.5);
+      this.trackLimb(leg, side, false, Math.PI + side * 0.5);
     }
 
-    // 上窄下宽的蛋形头：竖椭圆轮廓 + 头顶收窄，比正圆更有呆萌感
+    // 头：正圆大球，比身体更宽，去掉原来的上窄下宽尖顶蛋形
     const head = this.group(model, [0, 1.40, 0.02]);
-    const headGeo = new THREE.SphereGeometry(1, 30, 22);
-    const hp = headGeo.attributes.position;
-    for (let i = 0; i < hp.count; i++) {
-      const y = hp.getY(i);                    // -1 ~ 1
-      const taper = 1 - Math.max(0, y) * 0.26; // 只收窄上半球，下部保持圆润
-      hp.setX(i, hp.getX(i) * taper);
-      hp.setZ(i, hp.getZ(i) * taper);
-    }
-    headGeo.computeVertexNormals();
-    this.mesh(head, headGeo, fur, [0, 0, 0], [0.60, 0.66, 0.54]);
-    const greenIris = new THREE.Color('#57b34a');
+    this.sphere(head, headFur, [0, 0, 0], [0.76, 0.64, 0.60], [0, 0, 0], 30);
+    // 白眼圈 + 墨绿虹膜 + 大黑瞳：参考图的招牌眼（去掉原来的亮绿星芒）
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.19, 0.08, 0.44], 0.132, { iris: greenIris, pupil: BLACK, aspect: 1.0, style: 'sparkle' });
+      this.eye(head, [side * 0.245, -0.03, 0.60], 0.108, {
+        iris, pupil: BLACK, aspect: 1.0, style: 'round',
+        sclera: true, depth: 0.34, pupilScale: 0.54, glint: true,
+      });
     }
-    for (const side of [-1, 1] as const) {
-      this.sphere(head, ink, [side * 0.05, -0.16, 0.53], [0.018, 0.014, 0.012], [0, 0, 0], 10);
-    }
-    this.mouthCurve(head, [0, -0.28, 0.49], 0.17, 0.01, ink, 0.016);
+    // 只有一条细弧线微笑，没有鼻孔
+    this.mouthCurve(head, [0, -0.27, 0.59], 0.15, 0.012, ink, 0.013);
     this.trackHead(head);
 
-    // Tiny fire puff: a small cone that pops on the duang beat ("喷小火苗").
+    // 参考图头顶光滑无角、无呆毛；喷火苗作为只在 duang 节拍偶发的隐藏动作保留，
+    // 静态造型里完全看不见，不干扰和参考图的对照。
     const flameMat = this.material(new THREE.Color('#ff9a3c'), 0.5);
-    const flame = this.group(head, [0.20, -0.36, 0.42], [Math.PI / 2 - 0.35, 0, 0]);
-    this.cone(flame, flameMat, [0, 0.06, 0], 0.055, 0.16, [1, 1, 1], [0, 0, 0], 10);
+    const flame = this.group(head, [0.24, -0.32, 0.50], [Math.PI / 2 - 0.35, 0, 0]);
+    this.cone(flame, flameMat, [0, 0.05, 0], 0.045, 0.13, [1, 1, 1], [0, 0, 0], 10);
     flame.visible = false;
 
     const tail = this.group(model, [0, 0.52, -0.42]);
-    this.sphere(tail, fur, [0, 0, 0], [0.155, 0.155, 0.155], [0, 0, 0], 18);
+    this.sphere(tail, bodyFur, [0, 0, 0], [0.155, 0.155, 0.155], [0, 0, 0], 18);
     this.trackTail(tail);
 
-    // Lumbering walk plus the signature duang-duang bounce.
+    // 只保留轻微呼吸，不再让手臂随节拍挥动（参考图是安静态）
     this.motion((time, state) => {
       const awake = 1 - state.sleep;
-      const wobble = Math.sin(time * 2.5) * 0.020 * awake;
-      duang.scale.set(0.46 * (1 + wobble), 0.44 * (1 - wobble * 0.7), 0.32);
+      const wobble = Math.sin(time * 2.5) * 0.016 * awake;
+      duang.scale.set(0.47 * (1 + wobble), 0.45 * (1 - wobble * 0.7), 0.24);
+      model.position.x += Math.sin(time * 1.35) * 0.006 * awake;
+      if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.016 * awake;
       const cycle = ((time % 8.6) + 8.6) % 8.6;
       const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin(((cycle - 3.2) / 2.2) * Math.PI) : 0;
-      duang.scale.x *= 1 + duangBeat * 0.16;
-      duang.scale.y *= 1 - duangBeat * 0.11;
-      // Fire puff only on the crest of the duang beat and only while awake.
-      flame.visible = awake > 0.4 && duangBeat > 0.45;
-      if (flame.visible) {
-        flame.scale.setScalar(0.7 + duangBeat * 0.6);
-        flame.rotation.z = Math.sin(time * 3.6) * 0.07;
-      }
-      model.position.x += Math.sin(time * 1.35) * 0.008 * awake;
-      if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.022 * awake;
-      if (this.head) this.head.node.position.y += duangBeat * 0.025;
-      const wave = beatMotion(time, 8.6, 3.2, 5.4);
-      for (const limb of this.limbs) {
-        if (!limb.front) continue;
-        limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.045 * awake;
-        limb.node.rotation.z += limb.side * wave * 0.22;
-        limb.node.position.y += wave * 0.05;
-      }
-      for (const arm of dragonArms) {
-        const elbow = followBeat(time, 8.6, 3.2, 5.4, 0.12);
-        const wrist = followBeat(time, 8.6, 3.2, 5.4, 0.24);
-        arm.elbow.rotation.z = -arm.side * 0.10 + arm.side * elbow * 0.26;
-        arm.wrist.rotation.z = arm.side * wrist * 0.22;
-      }
+      flame.visible = awake > 0.4 && duangBeat > 0.6;
+      if (flame.visible) flame.scale.setScalar(0.6 + duangBeat * 0.5);
     });
   }
 
