@@ -138,7 +138,7 @@ let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
 let resolvedBackendLocale: string | null = null;
 let sliderDragging = false;
 let opacitySliderDragging = false;
-let currentAppVersion = '1.0.3';
+let currentAppVersion = '1.0.4';
 let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 // When GitHub's REST API answers 403, the footer button becomes a direct

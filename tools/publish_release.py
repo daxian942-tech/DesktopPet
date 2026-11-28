@@ -2,9 +2,9 @@
 """把本地 exe 发布到 DesktopPet 的 GitHub Release。
 
 用法（token 只走环境变量 / git 凭证，不落盘、不进命令行历史）：
-    GITHUB_TOKEN=ghp_xxx python tools/publish_release.py v1.0.3
+    GITHUB_TOKEN=ghp_xxx python tools/publish_release.py v1.0.4
     # 不设 token 时，自动读取 git credential（Windows 凭证管理器 / macOS Keychain）
-    python tools/publish_release.py v1.0.3
+    python tools/publish_release.py v1.0.4
 
 流程：
   1. 若该 tag 的 Release 不存在则创建（target_commitish 固定为 main）
@@ -80,9 +80,20 @@ def resolve_token():
 
 
 def release_body(tag):
-    return f"""## DesktopPet {tag} — 2D/3D 全面统一 + 人宠交互版
+    return f"""## DesktopPet {tag} — 照顾场景 + 跳跃互动版
 
-基于 v1.0.2 之后的所有改动：造型、质感、动作、交互与更新链路整体升级。
+基于 v1.0.3 之后的所有改动：照顾动作首次有了可见场景道具，猫和 12 只动物都会跳了。
+
+### 本次新增
+
+- **照顾动作场景化**：喂食出现食物碗与香气，喝水出现蓝色水碗与波纹，
+  玩耍有两颗弹跳球与星星，洗澡有水洼、水滴和肥皂泡；2D / 3D、猫 / 非猫全覆盖，
+  道具挂在引擎层，随动作淡入淡出，不会长期挂在桌面上。
+- **跳跃互动**：**鼠标按住桌宠往下拖，松手就跳**；只要产生向下位移就锁定跳跃，
+  斜着往下拖也算，轻扫一下也会小跳，空中再拖可接连跳。蓄力越满跳得越高、滞空越久，
+  起跳纵向拉伸、影子留在桌面缩小变淡、落地有阻尼回弹，键盘不跟着跳。
+- **跳跃触发放宽**：移除 220ms 抢占式窗口拖动判定与方向比例门槛，
+  慢速下拖、停顿后再下拖不再被误判成「移动窗口」。
 
 ### 造型与渲染
 
@@ -116,7 +127,7 @@ def release_body(tag):
 - `DesktopPet-setup-{tag}.exe` — NSIS 安装版（推荐）
 - `DesktopPet-portable-{tag}.exe` — 免安装便携版
 
-从 v1.0.2 及更早版本升级：点菜单底部「检查更新」即可自动升级；
+从 v1.0.3 及更早版本升级：点菜单底部「检查更新」即可自动升级；
 安装包会校验 GitHub 提供的 SHA-256 后再安装。源码与构建方法见仓库 README。
 """
 
@@ -130,7 +141,7 @@ def main():
         )
 
     if len(sys.argv) < 2:
-        sys.exit("用法: python tools/publish_release.py v1.0.3")
+        sys.exit("用法: python tools/publish_release.py v1.0.4")
     tag = sys.argv[1].strip()
     assert tag.startswith("v") and tag.count(".") == 2, f"非法 tag: {tag}"
 
