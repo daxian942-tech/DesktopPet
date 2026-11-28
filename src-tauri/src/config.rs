@@ -15,6 +15,10 @@ fn default_privacy_password_guard() -> bool {
     true
 }
 
+fn default_companion_on() -> bool {
+    true
+}
+
 fn default_mcp_port() -> u16 {
     27420
 }
@@ -259,6 +263,16 @@ pub struct AppSettings {
     pub fps_cap: u16,
     #[serde(default = "default_language")]
     pub language: String,
+    // Companion features (11-28). Bond/ambient on by default; the two that can
+    // surprise the user (proactive chatter, typing semantics) are opt-in.
+    #[serde(default = "default_companion_on")]
+    pub companion_bond: bool,
+    #[serde(default = "default_companion_on")]
+    pub companion_ambient: bool,
+    #[serde(default)]
+    pub companion_proactive: bool,
+    #[serde(default)]
+    pub companion_typing_semantics: bool,
 }
 
 impl Default for AppSettings {
@@ -298,6 +312,10 @@ impl Default for AppSettings {
             headphone_mode: default_headphone_mode(),
             fps_cap: default_fps_cap(),
             language: default_language(),
+            companion_bond: default_companion_on(),
+            companion_ambient: default_companion_on(),
+            companion_proactive: false,
+            companion_typing_semantics: false,
         }
     }
 }

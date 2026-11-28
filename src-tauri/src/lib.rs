@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 
+mod ambient;
 mod cats;
 mod config;
 mod game_detect;
@@ -5950,6 +5951,7 @@ pub fn run() {
                 settings_for_setup.clone(),
                 paused_for_setup.clone(),
             );
+            ambient::start_ambient_watcher(handle.clone(), paused_for_setup.clone());
             start_hit_test_loop(
                 handle.clone(),
                 settings_for_setup,

@@ -62,6 +62,10 @@ interface AppSettings {
   headphoneMode?: 'auto' | 'on' | 'off';
   fpsCap?: number;
   language?: string;
+  companionBond?: boolean;
+  companionAmbient?: boolean;
+  companionProactive?: boolean;
+  companionTypingSemantics?: boolean;
 }
 
 interface UpdateInfo {
@@ -122,6 +126,10 @@ let settings: AppSettings = {
   headphoneMode: 'off',
   fpsCap: 0,
   language: 'auto',
+  companionBond: true,
+  companionAmbient: true,
+  companionProactive: false,
+  companionTypingSemantics: false,
 };
 
 let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
@@ -509,6 +517,10 @@ function syncUI(): void {
   }
 
   setToggleSwitch('sw-privacy', settings.privacyPasswordGuard !== false);
+  setToggleSwitch('sw-companion-bond', settings.companionBond !== false);
+  setToggleSwitch('sw-companion-ambient', settings.companionAmbient !== false);
+  setToggleSwitch('sw-companion-proactive', settings.companionProactive === true);
+  setToggleSwitch('sw-companion-typing', settings.companionTypingSemantics === true);
   setToggleSwitch('sw-bubbles', settings.showKeyBubbles);
   setToggleSwitch('sw-lock', settings.clickThroughLocked);
   setToggleSwitch('sw-sound', settings.soundEnabled);
@@ -974,6 +986,18 @@ async function bootstrap(): Promise<void> {
         }
         case 'toggle-privacy':
           void applySettingsPatch({ privacyPasswordGuard: !(settings.privacyPasswordGuard !== false) });
+          break;
+        case 'toggle-companion-bond':
+          void applySettingsPatch({ companionBond: !(settings.companionBond !== false) });
+          break;
+        case 'toggle-companion-ambient':
+          void applySettingsPatch({ companionAmbient: !(settings.companionAmbient !== false) });
+          break;
+        case 'toggle-companion-proactive':
+          void applySettingsPatch({ companionProactive: !settings.companionProactive });
+          break;
+        case 'toggle-companion-typing':
+          void applySettingsPatch({ companionTypingSemantics: !settings.companionTypingSemantics });
           break;
         case 'toggle-bubbles':
           void applySettingsPatch({ showKeyBubbles: !settings.showKeyBubbles });

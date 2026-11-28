@@ -13,6 +13,11 @@ import {
 import { catAudio } from './audio';
 import { AgentCompanionController, type AgentCompanionEvent } from './agentCompanion';
 import {
+  CompanionFeatures,
+  type CompanionAction,
+  type CompanionFlags,
+} from './companionFeatures';
+import {
   applyPetCareAction,
   getPetCareState,
   petCareNeeds,
@@ -77,6 +82,10 @@ interface AppSettings {
   headphoneMode?: HeadphoneMode;
   fpsCap?: number;
   language?: string;
+  companionBond?: boolean;
+  companionAmbient?: boolean;
+  companionProactive?: boolean;
+  companionTypingSemantics?: boolean;
 }
 
 type InputEvent =
@@ -183,6 +192,10 @@ let settings: AppSettings = {
   headphoneMode: 'off',
   fpsCap: 0,
   language: 'auto',
+  companionBond: true,
+  companionAmbient: true,
+  companionProactive: false,
+  companionTypingSemantics: false,
 };
 
 let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
@@ -238,6 +251,69 @@ const agentCompanion = new AgentCompanionController({
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => settings.soundEnabled !== false,
 });
+
+/* ---------------- Companion features: bond / ambient / proactive / typing ---------------- */
+/** Rolling buffer of recently typed characters for opt-in semantics. */
+let typingBuffer = '';
+
+/** Best-effort VK -> printable char. Chinese IME text never reaches here;
+ *  only ASCII is mapped, which is enough for the small keyword set. */
+function vkToChar(vk: number): string {
+  if (vk >= 0x41 && vk <= 0x5a) return String.fromCharCode(vk + 32);
+  if (vk >= 0x30 && vk <= 0x39) return String.fromCharCode(vk);
+  if (vk === 0x20) return ' ';
+  return '';
+}
+
+const companion = new CompanionFeatures({
+  say: (text, ttlMs) => agentCompanion.handleEvent({ kind: 'bubble', source: 'companion', text, ttlMs }),
+  act: (action) => companionAct(action),
+  speciesId: () => engine.customSkin?.id ?? 'black',
+  isPrivate: () => privacyActive || gameActive,
+  isFocused: () => gameActive,
+  flags: (): CompanionFlags => ({
+    bond: settings.companionBond !== false,
+    ambient: settings.companionAmbient !== false,
+    proactive: settings.companionProactive === true,
+    typingSemantics: settings.companionTypingSemantics === true,
+  }),
+});
+
+/** Map a generic companion action onto both engines (cat demos vs non-cat moods).
+ *  Non-cat moods only exist for care expressions; the generic happy/curious
+ *  states reuse 'play'/'idle' so they stay inside the supported PetMood union. */
+function companionAct(action: CompanionAction): void {
+  const target = active3d && engine3d ? engine3d : engine;
+  const dur = 2600;
+  switch (action) {
+    case 'happy':
+      if (active3d && engine3d) engine3d.triggerHappyDemo?.(dur);
+      else engine.triggerHappyDemo?.(dur);
+      break;
+    case 'curious':
+      target.triggerCuriousDemo(dur);
+      break;
+    case 'sleep':
+      target.triggerSleepDemo();
+      break;
+    case 'wake':
+      if (active3d && engine3d) engine3d.triggerWakeDemo?.();
+      else engine.triggerWakeDemo?.();
+      break;
+    case 'angry':
+      target.triggerCrossDemo();
+      break;
+    case 'pat':
+      if (isIndependentSpecies(engine.customSkin)) {
+        engine.triggerCareMood('happy', 2.4);
+        engine3d?.triggerCareMood('happy', 2.4);
+      } else {
+        if (active3d && engine3d) engine3d.triggerHappyDemo?.(dur);
+        else engine.triggerHappyDemo?.(dur);
+      }
+      break;
+  }
+}
 
 /* ---------------- Pet care: feed / drink / play / bath ---------------- */
 const PET_CARE_MOODS: Record<PetCareAction, PetMood> = {
@@ -396,6 +472,7 @@ function updatePetCareUI(state: PetCareState): void {
 
 function performPetCareAction(action: PetCareAction): void {
   const res = applyPetCareAction(action);
+  if (res.effective) companion.recordInteraction(action);
   updatePetCareUI(res.state);
   if (isIndependentSpecies(engine.customSkin)) {
     const mood = PET_CARE_MOODS[action];
@@ -502,6 +579,7 @@ function startPetCareTicker(): void {  const tick = (): void => {
 }
 updatePetCareUI(getPetCareState());
 startPetCareTicker();
+companion.start();
 
 window.addEventListener('resize', () => {
   engine3d?.resize();
@@ -1669,6 +1747,16 @@ async function bootstrap(): Promise<void> {
     switch (p.kind) {
       case 'keyDown':
         agentCompanion.notifyRealUserInput();
+        // Typing semantics (default off): map the VK to a character and feed a
+        // rolling buffer so the companion can react to keyword phrases.
+        if (settings.companionTypingSemantics === true && !p.repeat && !privacyActive && !gameActive) {
+          const ch = vkToChar(p.vk);
+          if (ch) {
+            typingBuffer = (typingBuffer + ch).slice(-40);
+            companion.onTypingText(typingBuffer);
+          }
+          if (p.vk === 0x0d || p.vk === 0x20) typingBuffer = '';
+        }
         if (tailPickerOpen) {
           if (!p.repeat) {
             const spec = resolveKeyByVk(p.vk, settings.keyboardLayout);
@@ -1742,6 +1830,10 @@ async function bootstrap(): Promise<void> {
     engine.setPrivacyMode(privacyActive);
     engine3d?.setPrivacyMode(privacyActive);
     agentCompanion.setPrivacyMode(privacyActive);
+  });
+
+  await listen<boolean>('kuro-battery-low', () => {
+    companion.onBatteryLow();
   });
 
   await listen<AgentCompanionEvent>('kuro-agent-event', (ev) => {
@@ -1818,7 +1910,9 @@ async function bootstrap(): Promise<void> {
   }
 
   await listen<{ active?: boolean; gameName?: string | null; needsAdmin?: boolean }>('kuro-game-active', (ev) => {
+    const prevGame = gameActive;
     gameActive = Boolean(ev.payload?.active);
+    if (prevGame !== gameActive) companion.onFocusChanged(gameActive);
     const wearNow = shouldWearHeadphonesNow();
     engine.setGameActive(gameActive);
     engine3d?.setGameActive(gameActive);
@@ -2053,7 +2147,10 @@ async function bootstrap(): Promise<void> {
           active3d && engine3d
             ? engine3d.onCatTapAtClientPoint(downX, downY)
             : engine.onCatTapAtClientPoint(downX, downY);
-        if (zone) openCareQuickbar(downX, downY);
+        if (zone) {
+          companion.recordInteraction('pet');
+          openCareQuickbar(downX, downY);
+        }
       }
     };
 

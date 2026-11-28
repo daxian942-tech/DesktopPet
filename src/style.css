@@ -1609,6 +1609,19 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
   min-width: 0;
 }
 
+/* 互动开关的隐私说明小字 */
+.toggle-label-wrap:has(.toggle-note) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.toggle-note {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #9aa3b2;
+  white-space: normal;
+}
+
 .section-icon {
   flex-shrink: 0;
   color: #a9b2c2;
