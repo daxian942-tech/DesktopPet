@@ -17,12 +17,17 @@
       var qs = new URLSearchParams(location.search);
       var mood = qs.get('mood');
       var t = qs.get('t');
-      if (!mood) return;
+      var jump = qs.get('jump');
+      var jumpAmt = qs.get('jumpAmt');
+      var pet = qs.get('pet');
+      if (!mood && !jump) return;
       function seek() {
         if (!window.careEngine) { setTimeout(seek, 40); return; }
+        if (pet && typeof window.showPet === 'function') window.showPet(pet);
         if (t !== null) window.careEngine.elapsed = parseFloat(t);
-        window.careEngine.triggerCareMood(mood, 60);
-        if (t !== null) {
+        if (mood) window.careEngine.triggerCareMood(mood, 60);
+        if (jump) window.careEngine.previewJump(jump, jumpAmt === null ? 1 : parseFloat(jumpAmt));
+        if (t !== null || jump) {
           // 等 4 帧再冻结：无头 Chrome 偶发首帧还没画完就截图会得到空白
           var frames = 0;
           function settle() {

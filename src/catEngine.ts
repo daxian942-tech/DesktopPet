@@ -12,9 +12,15 @@ import { resolveCustomSkin, resolveSpecies, defaultMuzzleLength, type CatSkinCon
 import { DaFeiYuRenderer, type DaFeiYuLayout } from './dafeiyuRenderer';
 import { isIndependentSpecies, renderSpecies2d, type PetMood } from './speciesRenderer2d';
 import { drawCareScene2D } from './careScene';
+import { JumpMotion, type JumpPose } from './jumpMotion';
 
 export const LOGICAL_W = 420;
 export const LOGICAL_H = 440;
+
+// 跳跃幅度（逻辑像素，画布 420x440）。74px 约等于画面高度的 17%，
+// 角色头顶仍有余量，不会被透明窗口上边缘裁掉。
+const JUMP_LIFT_2D = 74;
+const JUMP_CROUCH_2D = 8;
 export type CatBreed = 'black' | 'ragdoll' | 'dafeiyu';
 export type KeyboardOrientation = 'cat' | 'viewer';
 export type TailKeyMode = 'smart' | 'custom' | 'edge' | 'off';
@@ -320,6 +326,8 @@ export class KuroCatEngine {
   private privacyTypingAt = -10000;
   private lastMouseNX = 0.5;
   private lastDt = 1 / 60;
+  /** 猫 / 大肥鱼 / 12 只动物共用的跳跃状态机，3D 引擎也有一个同样的实例 */
+  private readonly jump = new JumpMotion();
 
   public setPrivacyMode(active: boolean): void {
     this.wakeAction();
@@ -958,6 +966,31 @@ export class KuroCatEngine {
       this.mouseBaseY = isBigFish ? 322 : 334;
     }
     this.peekTransform = this.computePeekTransform2D();
+  }
+
+  /** 按住往下拖蓄力：进入下蹲姿态（猫 / 大肥鱼 / 12 只动物通用） */
+  public beginJumpCharge(): void {
+    this.jump.beginCharge();
+  }
+
+  /** 蓄力进度 0..1，由主窗口按拖曳距离 + 按住时长换算 */
+  public setJumpCharge(amt: number): void {
+    this.jump.setCharge(amt);
+  }
+
+  /** 松手起跳 */
+  public releaseJump(): void {
+    this.jump.release();
+  }
+
+  /** 手势被改判（右键菜单 / 切窗口）时柔和收势 */
+  public cancelJump(): void {
+    this.jump.cancel();
+  }
+
+  /** 预览 / 无头截图定格：charge | air | land */
+  public previewJump(kind: 'charge' | 'air' | 'land', amt = 1): void {
+    this.jump.preview(kind, amt);
   }
 
   /** Kick off a short care-feedback animation on the independent species renderer. */
@@ -3522,6 +3555,36 @@ export class KuroCatEngine {
 
   // ---- High-fidelity true-scale rendering ----
 
+  /** 跳跃变换：以脚底为轴心上移 + 挤压拉伸；键盘在独立 save/restore 里，不受影响 */
+  private applyJumpTransform(ctx: CanvasRenderingContext2D, p: JumpPose): void {
+    if (!p.active) return;
+    ctx.translate(0, -p.lift * JUMP_LIFT_2D + p.crouch * JUMP_CROUCH_2D);
+    ctx.translate(this.catCenterX, this.catBaseY);
+    ctx.rotate(p.tilt * 0.6);
+    ctx.scale(p.squashX, p.squashY);
+    ctx.translate(-this.catCenterX, -this.catBaseY);
+  }
+
+  /** 地面接触影子：留在桌面不随角色上移，随离地高度缩小变淡 */
+  private drawJumpShadow(ctx: CanvasRenderingContext2D, p: JumpPose): void {
+    if (p.lift < 0.012 && p.crouch < 0.012) return;
+    ctx.save();
+    ctx.globalAlpha = 0.2 * p.shadowAlpha;
+    ctx.fillStyle = '#4a4038';
+    ctx.beginPath();
+    ctx.ellipse(
+      this.catCenterX,
+      this.catBaseY + 12,
+      64 * p.shadowScale,
+      11 * p.shadowScale,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.restore();
+  }
+
   private render(): void {
     const ctx = this.ctx;
     const cw = this.canvas.width;
@@ -3538,6 +3601,10 @@ export class KuroCatEngine {
     ctx.translate(offsetX, offsetY);
     ctx.scale(uniformScale, uniformScale);
 
+    // 跳跃姿态每帧推进一次；影子画在最底层，随后绘制的键盘会自然盖住它。
+    const jumpPose: JumpPose = this.jump.update(this.lastDt);
+    this.drawJumpShadow(ctx, jumpPose);
+
     const breath = Math.sin(this.breathPhase) * (1.0 + this.sleepAmount * 0.65);
     const purrShift = this.squintAmount > 0.4 ? Math.sin(this.elapsed * 22) * 0.45 * this.squintAmount : 0;
     // 照顾情绪包络：猫 / 非猫 / 大肥鱼皮肤共用，驱动脚边的碗与水场景
@@ -3553,6 +3620,7 @@ export class KuroCatEngine {
 
       // Layer 1: BigFish sprite & Live2D eyes (rotated out cleanly from the screen border while peeking)
       ctx.save();
+      this.applyJumpTransform(ctx, jumpPose);
       if (peekP > 0.004) {
         const { tx, ty, rot, pivotX, pivotY } = this.peekTransform;
         ctx.translate(pivotX + tx, pivotY + ty);
@@ -3638,6 +3706,7 @@ export class KuroCatEngine {
     // ears, limbs, eyes and silhouette — never a deformed cat outline.
     if (isIndependentSpecies(this.customSkin)) {
       ctx.save();
+      this.applyJumpTransform(ctx, jumpPose);
       if (peekP > 0.004) {
         const { tx, ty, rot, pivotX, pivotY } = this.peekTransform;
         ctx.translate(pivotX + tx, pivotY + ty);
@@ -3668,6 +3737,7 @@ export class KuroCatEngine {
 
     // Apply Edge-Peek transform to cat + paws + FX so ONLY the cat head & gripping paws peek cleanly from the screen border!
     ctx.save();
+    this.applyJumpTransform(ctx, jumpPose);
     if (peekP > 0.004) {
       const { tx, ty, rot, pivotX, pivotY } = this.peekTransform;
       ctx.translate(pivotX + tx, pivotY + ty);

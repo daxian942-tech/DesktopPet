@@ -1804,6 +1804,8 @@ async function bootstrap(): Promise<void> {
   let dragInFlight = false;
   let nativeDragActive = false;
   let cancelPendingTapVsDrag: (() => void) | null = null;
+  /** 跳跃蓄力的松手回调：DOM mouseup 与全局 kuro-input mouseUp 都会调用，幂等 */
+  let finishJumpCharge: (() => void) | null = null;
 
   const computeKeySoundPan = (vk: number): number => {
     const kbLayout: KeyboardLayoutId = settings.keyboardLayout === '108' ? '108' : '65';
@@ -1880,6 +1882,8 @@ async function bootstrap(): Promise<void> {
         if (p.button === 'left') {
           resolveLinuxMouseUp?.();
           cancelPendingTapVsDrag?.();
+          // 鼠标拖出透明窗口后 DOM mouseup 会丢失，靠 WH_MOUSE_LL 全局松手起跳
+          finishJumpCharge?.();
         }
         if (settings.typingSoundEnabled) {
           catAudio.playMouseUp(p.button);
@@ -2179,8 +2183,14 @@ async function bootstrap(): Promise<void> {
     // to cleanly separate Tap (boop nose/tail/chin/head) vs Scruff Drag!
     const DRAG_THRESHOLD_PX = 4;
     const TAP_MAX_MS = 220;
+    // 跳跃手势参数：明显向下拖 = 蓄力，松手起跳。
+    const JUMP_START_PX = 9;    // 判定为蓄力所需的最小向下位移
+    const JUMP_FULL_PX = 84;    // 向下拖到 84px 蓄满
+    const JUMP_HOLD_MS = 850;   // 按住不动也能靠时长蓄满（鼠标可能拖出透明窗口）
+    const JUMP_TREND_MS = 620;  // 出现向下趋势时延后窗口拖动判定，给慢速下拖留识别窗口
     let settled = false;
     let holdTimer: number | null = null;
+    let jumpTrendArmed = false;
 
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
@@ -2202,9 +2212,100 @@ async function bootstrap(): Promise<void> {
       void runPetWindowDrag();
     };
 
+    /**
+     * 按住往下拖 = 蓄力。这里刻意不调用 runPetWindowDrag()：原生窗口拖动一旦
+     * 启动就由 Rust 120Hz 循环接管，JS 再也收不到后续手势。
+     * 蓄力进度取「拖曳距离」与「按住时长」的较大值，因此鼠标拖出透明窗口、
+     * DOM mousemove 中断时仍能继续蓄力；松手由 kuro-input 全局 mouseUp 兜底。
+     */
+    const beginJumpCharge = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (nativeDragActive || dragInFlight) return;
+
+      const chargeStart = performance.now();
+      let maxDragY = downY + JUMP_START_PX;
+      let raf = 0;
+      let done = false;
+      engine.beginJumpCharge();
+      engine3d?.beginJumpCharge();
+
+      const pushCharge = () => {
+        const dragAmt = Math.min(1, Math.max(0, (maxDragY - downY - JUMP_START_PX) / (JUMP_FULL_PX - JUMP_START_PX)));
+        const holdAmt = Math.min(1, Math.max(0, (performance.now() - chargeStart) / JUMP_HOLD_MS));
+        const amt = Math.max(dragAmt, holdAmt * 0.96);
+        engine.setJumpCharge(amt);
+        engine3d?.setJumpCharge(amt);
+      };
+
+      const removeChargeListeners = () => {
+        window.removeEventListener('mousemove', onChargeMove);
+        window.removeEventListener('mouseup', finish);
+        window.removeEventListener('blur', onChargeBlur);
+        window.removeEventListener('contextmenu', onChargeBlur);
+      };
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        window.cancelAnimationFrame(raf);
+        finishJumpCharge = null;
+        removeChargeListeners();
+        pushCharge();
+        engine.releaseJump();
+        engine3d?.releaseJump();
+      };
+      finishJumpCharge = finish;
+
+      const onChargeBlur = () => {
+        if (done) return;
+        done = true;
+        window.cancelAnimationFrame(raf);
+        finishJumpCharge = null;
+        removeChargeListeners();
+        // 失焦 / 右键菜单：柔和收势，不做突兀回位
+        engine.cancelJump();
+        engine3d?.cancelJump();
+      };
+
+      const onChargeMove = (ev: MouseEvent) => {
+        if (ev.clientY > maxDragY) maxDragY = ev.clientY;
+        pushCharge();
+      };
+
+      const tick = () => {
+        if (done) return;
+        pushCharge();
+        raf = window.requestAnimationFrame(tick);
+      };
+
+      window.addEventListener('mousemove', onChargeMove);
+      window.addEventListener('mouseup', finish);
+      window.addEventListener('blur', onChargeBlur);
+      window.addEventListener('contextmenu', onChargeBlur);
+      tick();
+    };
+
     const onMove = (ev: MouseEvent) => {
-      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) >= DRAG_THRESHOLD_PX) {
+      const dx = ev.clientX - downX;
+      const dy = ev.clientY - downY;
+      const dist = Math.hypot(dx, dy);
+      // 1) 明确向下拖 → 蓄力跳跃，优先于窗口拖动判定
+      if (dy >= JUMP_START_PX && dy > Math.abs(dx) * 1.35) {
+        beginJumpCharge();
+        return;
+      }
+      // 2) 横向 / 向上为主 → 立即走原有的窗口拖动，保持旧手感
+      if (dist >= DRAG_THRESHOLD_PX && dy <= Math.abs(dx) * 1.1) {
         beginDrag();
+        return;
+      }
+      // 3) 有向下趋势但还没到蓄力阈值 → 延后 220ms 拖动判定，避免慢速下拖被误判
+      if (dy >= 4 && !jumpTrendArmed) {
+        jumpTrendArmed = true;
+        if (holdTimer !== null) window.clearTimeout(holdTimer);
+        holdTimer = window.setTimeout(beginDrag, JUMP_TREND_MS);
       }
     };
 
@@ -2214,7 +2315,19 @@ async function bootstrap(): Promise<void> {
       cleanup();
       if (nativeDragActive) return;
       const dt = performance.now() - downAt;
-      const dist = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+      const dx = ev.clientX - downX;
+      const dy = ev.clientY - downY;
+      const dist = Math.hypot(dx, dy);
+      // 向下轻扫一下就松手：给一个最小力度的小跳，不弹照顾快捷栏
+      if (dy >= 4 && dy > Math.abs(dx) * 1.1 && dist < JUMP_START_PX && dt <= 400) {
+        engine.beginJumpCharge();
+        engine3d?.beginJumpCharge();
+        engine.setJumpCharge(0.18);
+        engine3d?.setJumpCharge(0.18);
+        engine.releaseJump();
+        engine3d?.releaseJump();
+        return;
+      }
       if (dist < DRAG_THRESHOLD_PX && dt <= TAP_MAX_MS) {
         const zone =
           active3d && engine3d

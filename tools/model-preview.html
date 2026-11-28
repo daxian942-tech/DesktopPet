@@ -25,12 +25,15 @@
       // 无头 Chrome 的虚拟时间不推进真实 elapsed，暂停/收回这类基于时间的
       // 状态机没法静态验证，所以用固定进度展示伸缩的三个关键帧。
       var reach = qs.get('reach');
+      // ?jump=<charge|air|land>&jumpAmt=<0..1> 定格跳跃三态用于截图验收
+      var jump = qs.get('jump');
+      var jumpAmt = qs.get('jumpAmt');
       if (!pet) return;
       function ready() {
         if (typeof window.showPet !== 'function') { setTimeout(ready, 40); return; }
         window.showPet(pet);
-        // reach 也要能单独生效，否则只传 ?reach= 时会被提前 return 掉。
-        if (t === null && !mood && !typing && reach === null) return;
+        // reach / jump 也要能单独生效，否则只传其中一个时会被提前 return 掉。
+        if (t === null && !mood && !typing && reach === null && !jump) return;
         function seek() {
           if (!window.petEngine) { setTimeout(seek, 40); return; }
           if (t !== null) window.petEngine.elapsed = parseFloat(t);
@@ -43,8 +46,9 @@
           if (reach !== null && window.petEngine.speciesModels) {
             window.petEngine.speciesModels.previewHandReach = parseFloat(reach);
           }
-          // 带 t 参数 = 确定性截图：渲染一两帧到目标时刻后立即冻结画面
-          if (t !== null) {
+          if (jump) window.petEngine.previewJump(jump, jumpAmt === null ? 1 : parseFloat(jumpAmt));
+          // 带 t 或 jump 参数 = 确定性截图：渲染一两帧到目标时刻后立即冻结画面
+          if (t !== null || jump) {
             requestAnimationFrame(function () {
               requestAnimationFrame(function () { window.petEngine.stop(); });
             });

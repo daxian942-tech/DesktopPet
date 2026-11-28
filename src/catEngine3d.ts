@@ -9,6 +9,7 @@ import {
 } from './catSkins';
 import { IndependentSpecies3D } from './speciesModel3d';
 import { createCareScene3D, type CareScene3DHandle } from './careScene';
+import { JumpMotion, type JumpPose } from './jumpMotion';
 import type { PetMood } from './speciesRenderer2d';
 import type { KeyboardLayoutId, KeyboardThemeId } from './keyboardLayout';
 import type { CatHitZone, KeyboardOrientation, PeekEdge, TailKeyMode } from './catEngine';
@@ -43,6 +44,11 @@ const COLLAR_COLORS: Record<Exclude<CollarColorId, 'none'>, string> = {
 
 const EYE_MAX_RX = 0.175;
 const EYE_MAX_RY = 0.160;
+
+// 跳跃幅度（世界单位）。相机 fov 22°、视锥半高约 1.16，取 0.62 保证
+// 跳到最高点也不会被透明窗口上边缘裁掉；蓄力下蹲只压 0.09，避免陷进键盘。
+const JUMP_LIFT_3D = 0.62;
+const JUMP_CROUCH_3D = 0.09;
 const Z_SCALE = 0.82;
 const BODY_H = 1.98;
 const HEAD_CY = 1.56;
@@ -916,6 +922,10 @@ export class KuroCatEngine3D {
   private careMoodUntil = -100;
   /** 照顾场景道具（碗 / 水碗 / 球 / 洗澡水），挂在 scene 上，猫和非猫共用。 */
   private careScene!: CareScene3DHandle;
+  /** 猫 / 12 只动物共用的跳跃状态机，2D 引擎也有一个同样的实例 */
+  private readonly jump = new JumpMotion();
+  /** 照顾道具的地面锚点：抵消跳跃上移，碗和水留在桌面 */
+  private readonly careGroundPos = new THREE.Vector3();
   private petUntil = -100;
   private petX = 0;
   private rub = 0;
@@ -2950,6 +2960,31 @@ export class KuroCatEngine3D {
     }, sleepMs);
   };
 
+  /** 按住往下拖蓄力：进入下蹲姿态（猫 / 12 只动物通用） */
+  public beginJumpCharge(): void {
+    this.jump.beginCharge();
+  }
+
+  /** 蓄力进度 0..1，由主窗口按拖曳距离 + 按住时长换算 */
+  public setJumpCharge(amt: number): void {
+    this.jump.setCharge(amt);
+  }
+
+  /** 松手起跳 */
+  public releaseJump(): void {
+    this.jump.release();
+  }
+
+  /** 手势被改判（右键菜单 / 切窗口）时柔和收势 */
+  public cancelJump(): void {
+    this.jump.cancel();
+  }
+
+  /** 预览 / 无头截图定格：charge | air | land */
+  public previewJump(kind: 'charge' | 'air' | 'land', amt = 1): void {
+    this.jump.preview(kind, amt);
+  }
+
   /** Kick off a short care-feedback expression on the independent species. */
   public triggerCareMood(mood: PetMood, durationSec = 1.8): void {
     this.careMood = mood;
@@ -3953,6 +3988,7 @@ export class KuroCatEngine3D {
   private update(dt: number): void {
     this.elapsed += dt;
     const t = this.elapsed;
+    const jumpPose: JumpPose = this.jump.update(dt);
 
     // 1) Camera smooth 360° turntable framing (gently faces straight front during Edge-Peek so paws stay flush!)
     const az = (this.sOrbitAz.step(this.orbitAzimuthTarget, dt) * Math.PI) / 180;
@@ -4357,6 +4393,20 @@ export class KuroCatEngine3D {
       this.catRoot.position.set(baseRootX, baseRootY, baseRootZ);
       this.catRoot.rotation.z = baseRotZ;
     }
+
+    // 跳跃：角色根节点整体上移 + 挤压拉伸。键盘挂在 scene 上不跟随；
+    // speciesModels.syncFrom() 会把 position / rotation / scale 复制给 12 只独立动物，
+    // 因此猫、大肥鱼和所有动物共用同一套跳跃动作。
+    const liftWorld = jumpPose.lift * JUMP_LIFT_3D;
+    const crouchWorld = jumpPose.crouch * JUMP_CROUCH_3D;
+    this.catRoot.position.y += liftWorld - crouchWorld;
+    this.catRoot.rotation.z += jumpPose.tilt;
+    this.catRoot.scale.set(0.9 * jumpPose.squashX, 0.9 * jumpPose.squashY, 0.9);
+    // 接触影子留在地面：抵消根节点位移，并随离地高度缩小、变淡
+    this.catShadow.position.y = 0.003 - liftWorld + crouchWorld;
+    this.catShadow.scale.setScalar(jumpPose.shadowScale);
+    (this.catShadow.material as THREE.MeshBasicMaterial).opacity = 0.78 * jumpPose.shadowAlpha;
+
     const scruffSwingClamped = clamp(this.scruffSwing, -1.6, 1.6);
     for (const hp of this.hindPaws) {
       hp.mesh.visible = peek < 0.30;
@@ -5067,7 +5117,9 @@ export class KuroCatEngine3D {
       mood: careAmt > 0 ? this.careMood : 'idle',
       moodAmt: careAmt,
     });
-    // 照顾场景道具：猫和非猫共用同一组碗 / 水 / 球
-    this.careScene.update(t, careAmt > 0 ? this.careMood : 'idle', careAmt, this.catRoot.position);
+    // 照顾场景道具：猫和非猫共用同一组碗 / 水 / 球；跳跃时留在桌面不跟着弹
+    this.careGroundPos.copy(this.catRoot.position);
+    this.careGroundPos.y -= jumpPose.lift * JUMP_LIFT_3D;
+    this.careScene.update(t, careAmt > 0 ? this.careMood : 'idle', careAmt, this.careGroundPos);
   }
 }

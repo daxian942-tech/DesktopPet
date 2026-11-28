@@ -34366,6 +34366,175 @@ void main() {
     };
   }
 
+  // src/jumpMotion.ts
+  var clamp013 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+  var IDLE_POSE = {
+    phase: "idle",
+    active: false,
+    charge: 0,
+    lift: 0,
+    crouch: 0,
+    squashX: 1,
+    squashY: 1,
+    tilt: 0,
+    shadowScale: 1,
+    shadowAlpha: 1
+  };
+  var JumpMotion = class {
+    phase = "idle";
+    chargeTarget = 0;
+    chargeSmooth = 0;
+    power = 0;
+    phaseT = 0;
+    duration = 0.55;
+    clock = 0;
+    /** 截图定格用：冻结相位推进，但仍输出当前姿态 */
+    frozen = false;
+    /** 复用同一个对象，避免每帧分配 */
+    pose = { ...IDLE_POSE };
+    get isCharging() {
+      return this.phase === "charging";
+    }
+    get isActive() {
+      return this.phase !== "idle";
+    }
+    /** 进入蓄力。空中不允许重新蓄力，避免连跳打断落地动画。 */
+    beginCharge() {
+      if (this.phase === "rising" || this.phase === "falling") return;
+      this.frozen = false;
+      this.phase = "charging";
+      this.chargeTarget = 0;
+      this.chargeSmooth = 0;
+      this.phaseT = 0;
+    }
+    /** 由主窗口根据「往下拖的距离 + 按住时长」设置蓄力 0..1 */
+    setCharge(amt) {
+      if (this.phase !== "charging") return;
+      this.chargeTarget = clamp013(amt);
+    }
+    /** 松手起跳：蓄得越满，跳得越高、滞空越久 */
+    release() {
+      if (this.phase !== "charging") return;
+      const c = Math.max(this.chargeSmooth, this.chargeTarget * 0.9);
+      this.power = clamp013(0.3 + c * 0.7);
+      this.duration = 0.4 + this.power * 0.28;
+      this.phaseT = 0;
+      this.phase = "rising";
+      this.chargeTarget = 0;
+      this.frozen = false;
+    }
+    /** 手势被改判（例如右键菜单、切窗口）时柔和收势，不做突兀回位 */
+    cancel() {
+      if (this.phase === "idle") return;
+      this.frozen = false;
+      this.chargeTarget = 0;
+      this.phaseT = 0;
+      this.phase = "landing";
+    }
+    update(dt) {
+      const d = Math.min(0.05, Math.max(0, dt));
+      if (!this.frozen) this.clock += d;
+      switch (this.phase) {
+        case "idle":
+          this.chargeSmooth = 0;
+          return IDLE_POSE;
+        case "charging":
+          if (!this.frozen) {
+            this.chargeSmooth += (this.chargeTarget - this.chargeSmooth) * (1 - Math.exp(-16 * d));
+          }
+          break;
+        case "rising":
+        case "falling":
+          if (!this.frozen) {
+            this.phaseT += d;
+            const u = this.phaseT / this.duration;
+            if (u >= 1) {
+              this.phase = "landing";
+              this.phaseT = 0;
+            } else {
+              this.phase = u < 0.5 ? "rising" : "falling";
+            }
+          }
+          break;
+        case "landing":
+          if (!this.frozen) {
+            this.phaseT += d;
+            if (this.phaseT >= 0.26) {
+              this.phase = "idle";
+              this.phaseT = 0;
+              this.chargeSmooth = 0;
+              return IDLE_POSE;
+            }
+          }
+          break;
+      }
+      return this.compose();
+    }
+    /** 预览 / 无头截图定格：charge | air | land，amt 为力度 0..1 */
+    preview(kind, amt = 1) {
+      const a = clamp013(amt);
+      this.frozen = true;
+      if (kind === "charge") {
+        this.phase = "charging";
+        this.chargeTarget = a;
+        this.chargeSmooth = a;
+        this.phaseT = 0;
+      } else if (kind === "air") {
+        this.phase = "rising";
+        this.power = 0.35 + a * 0.65;
+        this.duration = 0.4 + this.power * 0.28;
+        this.phaseT = this.duration * 0.42;
+        this.chargeTarget = 0;
+        this.chargeSmooth = 0;
+      } else {
+        this.phase = "landing";
+        this.phaseT = 0.045;
+        this.chargeTarget = 0;
+        this.chargeSmooth = 0;
+      }
+    }
+    compose() {
+      const p = this.pose;
+      p.phase = this.phase;
+      p.active = true;
+      p.charge = this.chargeSmooth;
+      p.shadowScale = 1;
+      p.shadowAlpha = 1;
+      p.tilt = 0;
+      if (this.phase === "charging") {
+        const c = this.chargeSmooth;
+        p.lift = 0;
+        p.crouch = c;
+        p.squashY = 1 - 0.2 * c;
+        p.squashX = 1 + 0.11 * c;
+        p.tilt = 0.018 * c + Math.sin(this.clock * 26) * 8e-3 * c;
+        p.shadowScale = 1 - 0.08 * c;
+        p.shadowAlpha = 1 - 0.12 * c;
+        return p;
+      }
+      if (this.phase === "rising" || this.phase === "falling") {
+        const u2 = clamp013(this.phaseT / this.duration);
+        p.lift = Math.max(0, 4 * u2 * (1 - u2));
+        p.crouch = 0;
+        const stretch = Math.exp(-u2 * 9);
+        const preLand = u2 > 0.82 ? (u2 - 0.82) / 0.18 : 0;
+        p.squashY = 1 + 0.17 * stretch - 0.07 * preLand;
+        p.squashX = 1 - 0.085 * stretch + 0.035 * preLand;
+        p.tilt = Math.sin(u2 * Math.PI) * 0.055 * (0.4 + this.power * 0.6);
+        p.shadowScale = 1 - 0.42 * p.lift;
+        p.shadowAlpha = 1 - 0.55 * p.lift;
+        return p;
+      }
+      const u = clamp013(this.phaseT / 0.26);
+      const bounce = Math.exp(-9 * u) * Math.sin(u * 20);
+      p.lift = 0;
+      p.crouch = 0;
+      p.squashY = 1 - 0.17 * bounce;
+      p.squashX = 1 + 0.085 * bounce;
+      return p;
+    }
+  };
+
   // src/keyboardLayout.ts
   function normalizeKeyboardTheme(raw) {
     return raw === "mist" || raw === "clay" ? raw : "oat";
@@ -38344,6 +38513,8 @@ void main() {
   };
   var EYE_MAX_RX = 0.175;
   var EYE_MAX_RY = 0.16;
+  var JUMP_LIFT_3D = 0.62;
+  var JUMP_CROUCH_3D = 0.09;
   var Z_SCALE = 0.82;
   var BODY_H = 1.98;
   var HEAD_CY = 1.56;
@@ -39078,6 +39249,10 @@ void main() {
     careMoodUntil = -100;
     /** 照顾场景道具（碗 / 水碗 / 球 / 洗澡水），挂在 scene 上，猫和非猫共用。 */
     careScene;
+    /** 猫 / 12 只动物共用的跳跃状态机，2D 引擎也有一个同样的实例 */
+    jump = new JumpMotion();
+    /** 照顾道具的地面锚点：抵消跳跃上移，碗和水留在桌面 */
+    careGroundPos = new Vector3();
     petUntil = -100;
     petX = 0;
     rub = 0;
@@ -40819,6 +40994,26 @@ void main() {
         this.rafId = requestAnimationFrame(this.renderFrame);
       }, sleepMs);
     };
+    /** 按住往下拖蓄力：进入下蹲姿态（猫 / 12 只动物通用） */
+    beginJumpCharge() {
+      this.jump.beginCharge();
+    }
+    /** 蓄力进度 0..1，由主窗口按拖曳距离 + 按住时长换算 */
+    setJumpCharge(amt) {
+      this.jump.setCharge(amt);
+    }
+    /** 松手起跳 */
+    releaseJump() {
+      this.jump.release();
+    }
+    /** 手势被改判（右键菜单 / 切窗口）时柔和收势 */
+    cancelJump() {
+      this.jump.cancel();
+    }
+    /** 预览 / 无头截图定格：charge | air | land */
+    previewJump(kind, amt = 1) {
+      this.jump.preview(kind, amt);
+    }
     /** Kick off a short care-feedback expression on the independent species. */
     triggerCareMood(mood, durationSec = 1.8) {
       this.careMood = mood;
@@ -41654,6 +41849,7 @@ void main() {
     update(dt) {
       this.elapsed += dt;
       const t = this.elapsed;
+      const jumpPose = this.jump.update(dt);
       const az = this.sOrbitAz.step(this.orbitAzimuthTarget, dt) * Math.PI / 180;
       const el = this.sOrbitEl.step(this.orbitElevTarget, dt) * Math.PI / 180;
       const effAz = az * (1 - clamp2(this.peekAmt, 0, 1));
@@ -41959,6 +42155,14 @@ void main() {
         this.catRoot.position.set(baseRootX, baseRootY, baseRootZ);
         this.catRoot.rotation.z = baseRotZ;
       }
+      const liftWorld = jumpPose.lift * JUMP_LIFT_3D;
+      const crouchWorld = jumpPose.crouch * JUMP_CROUCH_3D;
+      this.catRoot.position.y += liftWorld - crouchWorld;
+      this.catRoot.rotation.z += jumpPose.tilt;
+      this.catRoot.scale.set(0.9 * jumpPose.squashX, 0.9 * jumpPose.squashY, 0.9);
+      this.catShadow.position.y = 3e-3 - liftWorld + crouchWorld;
+      this.catShadow.scale.setScalar(jumpPose.shadowScale);
+      this.catShadow.material.opacity = 0.78 * jumpPose.shadowAlpha;
       const scruffSwingClamped = clamp2(this.scruffSwing, -1.6, 1.6);
       for (const hp of this.hindPaws) {
         hp.mesh.visible = peek < 0.3;
@@ -42548,7 +42752,9 @@ void main() {
         mood: careAmt > 0 ? this.careMood : "idle",
         moodAmt: careAmt
       });
-      this.careScene.update(t, careAmt > 0 ? this.careMood : "idle", careAmt, this.catRoot.position);
+      this.careGroundPos.copy(this.catRoot.position);
+      this.careGroundPos.y -= jumpPose.lift * JUMP_LIFT_3D;
+      this.careScene.update(t, careAmt > 0 ? this.careMood : "idle", careAmt, this.careGroundPos);
     }
   };
 
