@@ -187,10 +187,17 @@
   }
   function shift(c, amt) {
     const m = c.match(/^#([0-9a-f]{6})$/i);
-    if (!m) return c;
-    const h = m[1];
-    const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
-    return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+    if (m) {
+      const h = m[1];
+      const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
+      return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+    }
+    const rgb = c.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+    if (rgb) {
+      const ch = (v) => Math.max(0, Math.min(255, parseInt(v, 10) + amt));
+      return `rgb(${ch(rgb[1])},${ch(rgb[2])},${ch(rgb[3])})`;
+    }
+    return c;
   }
   function fillEllipse(ctx, x, y, rx, ry, color, rot = 0) {
     ctx.beginPath();
@@ -198,9 +205,26 @@
     ctx.fillStyle = color;
     ctx.fill();
   }
+  function plushFill(ctx, x, y, rx, ry, color) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(
+      x - rx * 0.28,
+      y - ry * 0.42,
+      rx * 0.08,
+      x + rx * 0.1,
+      y + ry * 0.18,
+      Math.max(rx, ry) * 1.12
+    );
+    g.addColorStop(0, shift(color, 16));
+    g.addColorStop(0.55, color);
+    g.addColorStop(1, shift(color, -18));
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
   function fillSoftEdge(ctx, x, y, rx, ry, color) {
     fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
-    fillEllipse(ctx, x, y, rx, ry, color);
+    plushFill(ctx, x, y, rx, ry, color);
   }
   function fillPoly(ctx, pts, color) {
     ctx.beginPath();

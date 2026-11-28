@@ -22164,12 +22164,12 @@
       depthBuffer
     });
   }
-  function _getMaterial(name, uniforms, fragmentShader) {
+  function _getMaterial(name, uniforms, fragmentShader2) {
     return new ShaderMaterial({
       name,
       uniforms,
       vertexShader: ShaderChunk.cube_vert,
-      fragmentShader,
+      fragmentShader: fragmentShader2,
       side: BackSide,
       blending: NoBlending,
       depthTest: false,
@@ -24032,8 +24032,8 @@
   function WebGLProgram(renderer, cacheKey, parameters, bindingStates) {
     const gl = renderer.getContext();
     const defines = parameters.defines;
-    let vertexShader = parameters.vertexShader;
-    let fragmentShader = parameters.fragmentShader;
+    let vertexShader2 = parameters.vertexShader;
+    let fragmentShader2 = parameters.fragmentShader;
     const shadowMapTypeDefine = generateShadowMapTypeDefine(parameters);
     const envMapTypeDefine = parameters.envMapPMREM === true ? "ENVMAP_TYPE_PMREM" : "ENVMAP_TYPE_CUBE";
     const envMapModeDefine = generateEnvMapModeDefine(parameters);
@@ -24283,14 +24283,14 @@
         "\n"
       ].filter(filterEmptyLine).join("\n");
     }
-    vertexShader = resolveIncludes(vertexShader);
-    vertexShader = replaceLightNums(vertexShader, parameters);
-    vertexShader = replaceClippingPlaneNums(vertexShader, parameters);
-    fragmentShader = resolveIncludes(fragmentShader);
-    fragmentShader = replaceLightNums(fragmentShader, parameters);
-    fragmentShader = replaceClippingPlaneNums(fragmentShader, parameters);
-    vertexShader = unrollLoops(vertexShader);
-    fragmentShader = unrollLoops(fragmentShader);
+    vertexShader2 = resolveIncludes(vertexShader2);
+    vertexShader2 = replaceLightNums(vertexShader2, parameters);
+    vertexShader2 = replaceClippingPlaneNums(vertexShader2, parameters);
+    fragmentShader2 = resolveIncludes(fragmentShader2);
+    fragmentShader2 = replaceLightNums(fragmentShader2, parameters);
+    fragmentShader2 = replaceClippingPlaneNums(fragmentShader2, parameters);
+    vertexShader2 = unrollLoops(vertexShader2);
+    fragmentShader2 = unrollLoops(fragmentShader2);
     if (parameters.isRawShaderMaterial !== true) {
       versionString = "#version 300 es\n";
       prefixVertex = [
@@ -24315,8 +24315,8 @@
         "#define textureCubeGradEXT textureGrad"
       ].join("\n") + "\n" + prefixFragment;
     }
-    const vertexGlsl = versionString + prefixVertex + vertexShader;
-    const fragmentGlsl = versionString + prefixFragment + fragmentShader;
+    const vertexGlsl = versionString + prefixVertex + vertexShader2;
+    const fragmentGlsl = versionString + prefixFragment + fragmentShader2;
     const glVertexShader = WebGLShader(gl, gl.VERTEX_SHADER, vertexGlsl);
     const glFragmentShader = WebGLShader(gl, gl.FRAGMENT_SHADER, fragmentGlsl);
     gl.attachShader(program, glVertexShader);
@@ -24524,15 +24524,15 @@
       if (geometry.morphAttributes.position !== void 0) morphTextureStride = 1;
       if (geometry.morphAttributes.normal !== void 0) morphTextureStride = 2;
       if (geometry.morphAttributes.color !== void 0) morphTextureStride = 3;
-      let vertexShader, fragmentShader;
+      let vertexShader2, fragmentShader2;
       let customVertexShaderID, customFragmentShaderID;
       if (shaderID) {
         const shader = ShaderLib[shaderID];
-        vertexShader = shader.vertexShader;
-        fragmentShader = shader.fragmentShader;
+        vertexShader2 = shader.vertexShader;
+        fragmentShader2 = shader.fragmentShader;
       } else {
-        vertexShader = material.vertexShader;
-        fragmentShader = material.fragmentShader;
+        vertexShader2 = material.vertexShader;
+        fragmentShader2 = material.fragmentShader;
         const vertexShaderStage = _customShaders.getVertexShaderStage(material);
         const fragmentShaderStage = _customShaders.getFragmentShaderStage(material);
         _customShaders.update(material, vertexShaderStage, fragmentShaderStage);
@@ -24593,8 +24593,8 @@
         shaderID,
         shaderType: material.type,
         shaderName: material.name,
-        vertexShader,
-        fragmentShader,
+        vertexShader: vertexShader2,
+        fragmentShader: fragmentShader2,
         defines: material.defines,
         customVertexShaderID,
         customFragmentShaderID,
@@ -32046,6 +32046,75 @@ void main() {
   var BLENDER_GENERATOR = blenderMeshes_default.generator;
   var BLENDER_VERSION = blenderMeshes_default.version;
 
+  // src/speciesShade3d.ts
+  var MATERIALS = /* @__PURE__ */ new Map();
+  function vertexShader() {
+    return `
+    varying vec3 vNormal;
+    varying vec3 vView;
+    void main() {
+      // \u539F\u751F\u51E0\u4F55\u7F3A normal \u65F6\uFF08\u4E2A\u522B Blender \u90E8\u4EF6\uFF09\u7ED9\u4E2A\u671D\u5411\u76F8\u673A\u7684\u5B89\u5168\u6CD5\u7EBF\uFF0C\u907F\u514D NaN \u5168\u9ED1\u3002
+      vec3 nrm = normal;
+      if (dot(nrm, nrm) < 0.001) nrm = vec3(0.0, 0.0, 1.0);
+      vNormal = normalize(normalMatrix * nrm);
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vView = normalize(-mv.xyz);
+      gl_Position = projectionMatrix * mv;
+    }
+  `;
+  }
+  function fragmentShader() {
+    return `
+    uniform vec3 uColor;
+    uniform float uShade;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    void main() {
+      vec3 n = normalize(vNormal);
+      vec3 v = normalize(vView);
+
+      // \u4E0E\u732B\u54AA\u540C\u65B9\u5411\u7684\u4E24\u76CF\u8F6F\u5149\uFF1A\u4E3B\u5149\u504F\u5DE6\u4E0A\u524D\uFF0C\u8865\u5149\u504F\u53F3\u4E0A\u524D
+      float keyLit = dot(n, vec3(-0.2785, 0.7361, 0.6167));
+      float fillLit = dot(n, vec3(0.7510, 0.3108, 0.5827));
+      float wrap = keyLit * 0.5 + fillLit * 0.12 + 0.5;
+
+      // \u6BD4\u732B\u54AA\u66F4\u4EAE\u7684\u6620\u5C04\uFF0C\u6697\u9762\u53EA\u5230 0.93\uFF0C\u7EDD\u4E0D\u53D8\u810F\u53D8\u9ED1
+      float shadeMul = mix(0.93, 1.10, smoothstep(0.08, 0.92, wrap));
+      vec3 col = uColor * mix(1.0, shadeMul, uShade);
+
+      // \u6697\u90E8\u8865\u4E00\u70B9\u6696\u8272\uFF0C\u907F\u514D\u767D\u8272/\u6D45\u8272\u52A8\u7269\u5728\u80CC\u5149\u4FA7\u53D1\u7070\uFF08\u732B\u54AA\u662F\u6696\u5976\u6CB9\u9634\u5F71\uFF09
+      float shadowAmt = 1.0 - smoothstep(0.0, 0.45, wrap);
+      col += uColor * vec3(0.045, 0.020, 0.0) * shadowAmt * uShade;
+
+      // \u9876\u90E8\u67D4\u548C\u6696\u9AD8\u5149 \u2014\u2014 designer-vinyl \u5851\u6599\u8D28\u611F\u7684\u5173\u952E
+      col += vec3(0.038, 0.033, 0.027) * max(0.0, keyLit) * uShade * 0.60;
+
+      // \u6781\u8F7B\u7684\u8FB9\u7F18\u8FC7\u6E21\uFF08\u504F\u6696\u3001\u53EA 3%\uFF09\uFF0C\u4FDD\u7559\u5706\u6DA6\u4F53\u79EF\u611F\u53C8\u4E0D\u4F1A\u51FA\u73B0\u9ED1\u63CF\u8FB9
+      float ndv = clamp(dot(n, v), 0.0, 1.0);
+      col *= 1.0 - uShade * 0.03 * pow(1.0 - ndv, 2.5);
+
+      gl_FragColor = vec4(col, 1.0);
+      #include <colorspace_fragment>
+    }
+  `;
+  }
+  function plushMaterial(color, shade = 0.85) {
+    const key = `${color.getHexString()}:${shade.toFixed(2)}`;
+    const cached = MATERIALS.get(key);
+    if (cached) return cached;
+    const mat = new ShaderMaterial({
+      uniforms: {
+        uColor: { value: color.clone() },
+        uShade: { value: shade }
+      },
+      vertexShader: vertexShader(),
+      fragmentShader: fragmentShader()
+    });
+    mat.userData.shared = true;
+    MATERIALS.set(key, mat);
+    return mat;
+  }
+
   // src/speciesModel3d.ts
   var WHITE = new Color("#ffffff");
   var BLACK = new Color("#111318");
@@ -32344,6 +32413,13 @@ void main() {
       return mat;
     }
     /**
+     * 主体大色块用柔和塑形光照（和猫咪同款的 designer-vinyl 质感）。
+     * 只用于身体/头/肚皮/四肢/掌；眼睛、瞳孔、高光仍走纯色 material()。
+     */
+    plush(color, shade = 0.85) {
+      return plushMaterial(color, shade);
+    }
+    /**
      * 淡淡的同色系轮廓壳：用略压暗的底色 + BackSide，放大一点点只露边缘一圈。
      * 不是黑描边（用户明确不要黑边），只是让纯色块在浅背景上干净收边，和 2D 的淡边一致。
      */
@@ -32477,11 +32553,19 @@ void main() {
      */
     addSoftOutline(node) {
       const base = node.children.find((c) => c instanceof Mesh);
-      if (!base || !(base.material instanceof MeshBasicMaterial)) return;
+      if (!base) return;
+      let color = null;
+      if (base.material instanceof MeshBasicMaterial) {
+        color = base.material.color;
+      } else if (base.material instanceof ShaderMaterial) {
+        const u = base.material.uniforms.uColor;
+        if (u && u.value instanceof Color) color = u.value;
+      }
+      if (!color) return;
       const shell = this.mesh(
         node,
         base.geometry,
-        this.outlineMaterial(base.material.color),
+        this.outlineMaterial(color),
         [base.position.x, base.position.y, base.position.z],
         [base.scale.x * 1.035, base.scale.y * 1.035, base.scale.z * 1.035],
         [base.rotation.x, base.rotation.y, base.rotation.z]
@@ -32938,8 +33022,8 @@ void main() {
         for (const limb of this.limbs) limb.arm = false;
         const p = this.palette;
         const model = this.model;
-        const fur = this.material(p.fur);
-        const paw = this.material(p.paw);
+        const fur = this.plush(p.fur);
+        const paw = this.plush(p.paw);
         const pad = this.material(p.blush, 0.92);
         const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
         const isDragon = species === "milkdragon";
@@ -33020,8 +33104,8 @@ void main() {
     buildDog() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const cream = this.material(p.cream);
+      const fur = this.plush(p.fur);
+      const cream = this.plush(p.cream);
       const body = this.group(model, [0, 0.72, 0]);
       this.sphere(body, fur, [0, 0, 0], [0.62, 0.52, 0.84]);
       this.sphere(body, cream, [0, -0.1, 0.58], [0.36, 0.27, 0.3]);
@@ -33061,9 +33145,9 @@ void main() {
     buildFox() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const pale = this.material(p.cream);
-      const socks = this.material(p.paw);
+      const fur = this.plush(p.fur);
+      const pale = this.plush(p.cream);
+      const socks = this.plush(p.paw);
       const body = this.group(model, [0, 0.7, 0]);
       this.sphere(body, fur, [0, 0, 0], [0.58, 0.48, 0.82]);
       this.sphere(body, pale, [0, -0.12, 0.56], [0.34, 0.24, 0.28]);
@@ -33104,8 +33188,8 @@ void main() {
     buildPanda() {
       const p = this.palette;
       const model = this.model;
-      const white = this.material(p.fur);
-      const black = this.material(p.secondary.getHex() === p.fur.getHex() ? new Color("#1c1c1e") : p.secondary);
+      const white = this.plush(p.fur);
+      const black = this.plush(p.secondary.getHex() === p.fur.getHex() ? new Color("#1c1c1e") : p.secondary);
       const body = this.group(model, [0, 0.74, 0]);
       this.sphere(body, white, [0, 0, 0], [0.64, 0.52, 0.8]);
       this.sphere(body, black, [0, 0.1, 0.28], [0.64, 0.38, 0.54]);
@@ -33141,8 +33225,8 @@ void main() {
     buildBunny() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const pale = this.material(p.belly);
+      const fur = this.plush(p.fur);
+      const pale = this.plush(p.belly);
       const body = this.group(model, [0, 0.62, 0], [-0.1, 0, 0]);
       this.sphere(body, fur, [0, 0, 0], [0.54, 0.52, 0.46]);
       this.sphere(body, pale, [0, -0.12, 0.32], [0.34, 0.3, 0.2]);
@@ -33177,8 +33261,8 @@ void main() {
     buildPenguin() {
       const p = this.palette;
       const model = this.model;
-      const dark = this.material(p.fur);
-      const white = this.material(p.belly);
+      const dark = this.plush(p.fur);
+      const white = this.plush(p.belly);
       const orange = this.material(p.nose);
       const body = this.group(model);
       const pear = new SphereGeometry(1, 32, 24);
@@ -33228,8 +33312,8 @@ void main() {
     buildFrog() {
       const p = this.palette;
       const model = this.model;
-      const green = this.material(p.fur);
-      const pale = this.material(p.belly);
+      const green = this.plush(p.fur);
+      const pale = this.plush(p.belly);
       const body = this.group(model, [0, 0.5, -0.08]);
       this.sphere(body, green, [0, 0, 0], [0.72, 0.34, 0.58]);
       this.sphere(body, pale, [0, -0.08, 0.38], [0.46, 0.18, 0.22]);
@@ -33260,8 +33344,8 @@ void main() {
     buildChiikawa() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const cream = this.material(tint(p.fur, -0.035));
+      const fur = this.plush(p.fur);
+      const cream = this.plush(tint(p.fur, -0.035));
       const ink = this.material(p.mouth);
       const pink = this.material(p.nose, 0.6);
       const body = this.group(model, [0, 0.66, -0.05]);
@@ -33364,8 +33448,8 @@ void main() {
     buildGrassCow() {
       const p = this.palette;
       const model = this.model;
-      const white = this.material(p.fur);
-      const patches = this.material(p.secondary);
+      const white = this.plush(p.fur);
+      const patches = this.plush(p.secondary);
       const pink = this.material(p.nose, 0.72);
       const ink = this.material(p.mouth);
       const hornMat = this.material(new Color("#e8ddc8"), 0.72);
@@ -33453,9 +33537,9 @@ void main() {
     buildMilkDragon() {
       const p = this.palette;
       const model = this.model;
-      const headFur = this.material(p.fur);
-      const bodyFur = this.material(p.secondary);
-      const bellyMat = this.material(new Color("#fff1ef"));
+      const headFur = this.plush(p.fur);
+      const bodyFur = this.plush(p.secondary);
+      const bellyMat = this.plush(new Color("#fff1ef"));
       const ink = this.material(p.mouth);
       const toeMat = this.material(new Color("#8a7466"));
       const iris = new Color("#2f6b46");
@@ -33510,10 +33594,10 @@ void main() {
     buildCapybara() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const dark = this.material(p.secondary);
+      const fur = this.plush(p.fur);
+      const dark = this.plush(p.secondary);
       const ink = this.material(p.mouth);
-      const muzzleMat = this.material(new Color("#f59b1f"), 0.74);
+      const muzzleMat = this.plush(new Color("#f59b1f"));
       const shorts = this.material(new Color("#a9602e"), 0.82);
       const body = this.group(model, [0, 0.66, 0]);
       this.sphere(body, fur, [0, 0, 0], [0.6, 0.48, 0.76]);
@@ -33576,10 +33660,10 @@ void main() {
     buildLoopy() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
-      const tailMat = this.material(tint(p.secondary, -0.1));
+      const fur = this.plush(p.fur);
+      const tailMat = this.plush(tint(p.secondary, -0.1));
       const ink = this.material(p.mouth);
-      const whiteBelly = this.material(new Color("#f3e3e6"), 0.86);
+      const whiteBelly = this.plush(new Color("#f3e3e6"));
       const darkPaw = this.material(new Color("#51283c"), 0.72);
       const tuftMat = this.material(new Color("#e8752f"), 0.72);
       const body = this.group(model, [0, 0.62, 0]);
@@ -33675,7 +33759,7 @@ void main() {
     buildBubu() {
       const p = this.palette;
       const model = this.model;
-      const fur = this.material(p.fur);
+      const fur = this.plush(p.fur);
       const ink = this.material(p.mouth);
       const blushMat = this.material(new Color("#e6a96f"), 0.86);
       const rose = this.material(new Color("#e05260"), 0.62);
@@ -35337,10 +35421,17 @@ void main() {
   }
   function shift(c, amt) {
     const m = c.match(/^#([0-9a-f]{6})$/i);
-    if (!m) return c;
-    const h = m[1];
-    const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
-    return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+    if (m) {
+      const h = m[1];
+      const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
+      return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+    }
+    const rgb = c.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+    if (rgb) {
+      const ch = (v) => Math.max(0, Math.min(255, parseInt(v, 10) + amt));
+      return `rgb(${ch(rgb[1])},${ch(rgb[2])},${ch(rgb[3])})`;
+    }
+    return c;
   }
   function fillEllipse(ctx, x, y, rx, ry, color, rot = 0) {
     ctx.beginPath();
@@ -35348,9 +35439,26 @@ void main() {
     ctx.fillStyle = color;
     ctx.fill();
   }
+  function plushFill(ctx, x, y, rx, ry, color) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(
+      x - rx * 0.28,
+      y - ry * 0.42,
+      rx * 0.08,
+      x + rx * 0.1,
+      y + ry * 0.18,
+      Math.max(rx, ry) * 1.12
+    );
+    g.addColorStop(0, shift(color, 16));
+    g.addColorStop(0.55, color);
+    g.addColorStop(1, shift(color, -18));
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
   function fillSoftEdge(ctx, x, y, rx, ry, color) {
     fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
-    fillEllipse(ctx, x, y, rx, ry, color);
+    plushFill(ctx, x, y, rx, ry, color);
   }
   function fillPoly(ctx, pts, color) {
     ctx.beginPath();
@@ -36295,7 +36403,7 @@ void main() {
     createMaterial(part, side = 0) {
       const defines = { [part]: 1 };
       if (side < 0) defines.LEFT = 1;
-      const vertexShader = `
+      const vertexShader2 = `
       attribute vec3 rest;
       attribute float along;
       #ifdef CAT_BODY
@@ -36378,7 +36486,7 @@ void main() {
         gl_Position = projectionMatrix * mv;
       }
     `;
-      const fragmentShader = `
+      const fragmentShader2 = `
       uniform vec3 uFur, uLight, uDark, uPatchA, uPatchB, uPoint, uInner, uPawColor, uEarOuter, uEarTip, uArmColor, uTailBase, uTailTip;
       uniform float uStripes, uMuzzle, uBib, uCalico, uTuxedo, uPoints, uInnerAmt, uShade, uIsDarkFur, uEarOuterAmt, uEarTipAmt, uArmColorAmt, uTailBaseAmt, uTailTipAmt, uTailStripes;
       uniform int uSpotCount;
@@ -36667,8 +36775,8 @@ void main() {
     `;
       return new ShaderMaterial({
         uniforms: this.uniforms,
-        vertexShader,
-        fragmentShader,
+        vertexShader: vertexShader2,
+        fragmentShader: fragmentShader2,
         defines
       });
     }

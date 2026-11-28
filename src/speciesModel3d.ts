@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { resolveSpecies, type AnimalSpecies, type CatSkinConfig } from './catSkins';
 import { blenderGeometry, type BlenderPart } from './blenderMeshes';
+import { plushMaterial } from './speciesShade3d';
 
 type Vec3 = readonly [number, number, number];
 type NonCatSpecies = Exclude<AnimalSpecies, 'cat'>;
@@ -525,6 +526,14 @@ export class IndependentSpecies3D {
   }
 
   /**
+   * 主体大色块用柔和塑形光照（和猫咪同款的 designer-vinyl 质感）。
+   * 只用于身体/头/肚皮/四肢/掌；眼睛、瞳孔、高光仍走纯色 material()。
+   */
+  private plush(color: THREE.Color, shade = 0.85): THREE.ShaderMaterial {
+    return plushMaterial(color, shade);
+  }
+
+  /**
    * 淡淡的同色系轮廓壳：用略压暗的底色 + BackSide，放大一点点只露边缘一圈。
    * 不是黑描边（用户明确不要黑边），只是让纯色块在浅背景上干净收边，和 2D 的淡边一致。
    */
@@ -730,11 +739,21 @@ export class IndependentSpecies3D {
    */
   private addSoftOutline(node: THREE.Object3D): void {
     const base = node.children.find((c): c is THREE.Mesh => c instanceof THREE.Mesh);
-    if (!base || !(base.material instanceof THREE.MeshBasicMaterial)) return;
+    if (!base) return;
+    // 主体色块可能是纯色 MeshBasicMaterial，也可能是新的柔和光照 ShaderMaterial，
+    // 两种情况都要拿到底色，否则轮廓壳会静默失效（18:05 换 shader 后踩过这个坑）。
+    let color: THREE.Color | null = null;
+    if (base.material instanceof THREE.MeshBasicMaterial) {
+      color = base.material.color;
+    } else if (base.material instanceof THREE.ShaderMaterial) {
+      const u = base.material.uniforms.uColor;
+      if (u && u.value instanceof THREE.Color) color = u.value;
+    }
+    if (!color) return;
     const shell = this.mesh(
       node,
       base.geometry,
-      this.outlineMaterial(base.material.color),
+      this.outlineMaterial(color),
       [base.position.x, base.position.y, base.position.z],
       [base.scale.x * 1.035, base.scale.y * 1.035, base.scale.z * 1.035],
       [base.rotation.x, base.rotation.y, base.rotation.z],
@@ -1298,8 +1317,8 @@ export class IndependentSpecies3D {
       for (const limb of this.limbs) limb.arm = false;
       const p = this.palette!;
       const model = this.model!;
-      const fur = this.material(p.fur);
-      const paw = this.material(p.paw);
+      const fur = this.plush(p.fur);
+      const paw = this.plush(p.paw);
       const pad = this.material(p.blush, 0.92);
       const shoulderY = TYPING_HAND_SHOULDER_Y[species] ?? 0.72;
       // 奶龙按用户参考图：待机是「两只粗短手臂环抱胸前」，橙色、无对比色掌垫；
@@ -1438,8 +1457,8 @@ export class IndependentSpecies3D {
   private buildDog(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const cream = this.material(p.cream);
+    const fur = this.plush(p.fur);
+    const cream = this.plush(p.cream);
 
     // Q 版柴犬：矮墩面包身 + 大圆头，短粗腿半埋进身体
     const body = this.group(model, [0, 0.72, 0]);
@@ -1480,9 +1499,9 @@ export class IndependentSpecies3D {
   private buildFox(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const pale = this.material(p.cream);
-    const socks = this.material(p.paw);
+    const fur = this.plush(p.fur);
+    const pale = this.plush(p.cream);
+    const socks = this.plush(p.paw);
 
     const body = this.group(model, [0, 0.70, 0]);
     this.sphere(body, fur, [0, 0, 0], [0.58, 0.48, 0.82]);
@@ -1521,8 +1540,8 @@ export class IndependentSpecies3D {
   private buildPanda(): void {
     const p = this.palette!;
     const model = this.model!;
-    const white = this.material(p.fur);
-    const black = this.material(p.secondary.getHex() === p.fur.getHex() ? new THREE.Color('#1c1c1e') : p.secondary);
+    const white = this.plush(p.fur);
+    const black = this.plush(p.secondary.getHex() === p.fur.getHex() ? new THREE.Color('#1c1c1e') : p.secondary);
 
     const body = this.group(model, [0, 0.74, 0]);
     this.sphere(body, white, [0, 0, 0], [0.64, 0.52, 0.80]);
@@ -1555,8 +1574,8 @@ export class IndependentSpecies3D {
   private buildBunny(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const pale = this.material(p.belly);
+    const fur = this.plush(p.fur);
+    const pale = this.plush(p.belly);
 
     // Q 版兔子：坐墩团子 + 长耳，小手搭在胸前
     const body = this.group(model, [0, 0.62, 0], [-0.10, 0, 0]);
@@ -1597,8 +1616,8 @@ export class IndependentSpecies3D {
   private buildPenguin(): void {
     const p = this.palette!;
     const model = this.model!;
-    const dark = this.material(p.fur);
-    const white = this.material(p.belly);
+    const dark = this.plush(p.fur);
+    const white = this.plush(p.belly);
     const orange = this.material(p.nose);
 
     const body = this.group(model);
@@ -1653,8 +1672,8 @@ export class IndependentSpecies3D {
   private buildFrog(): void {
     const p = this.palette!;
     const model = this.model!;
-    const green = this.material(p.fur);
-    const pale = this.material(p.belly);
+    const green = this.plush(p.fur);
+    const pale = this.plush(p.belly);
 
     // Q 版青蛙：宽扁团子，眼睛顶着两个大圆包
     const body = this.group(model, [0, 0.50, -0.08]);
@@ -1690,8 +1709,8 @@ export class IndependentSpecies3D {
   private buildChiikawa(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const cream = this.material(tint(p.fur, -0.035));
+    const fur = this.plush(p.fur);
+    const cream = this.plush(tint(p.fur, -0.035));
     const ink = this.material(p.mouth);
     const pink = this.material(p.nose, 0.6);
 
@@ -1801,8 +1820,8 @@ export class IndependentSpecies3D {
   private buildGrassCow(): void {
     const p = this.palette!;
     const model = this.model!;
-    const white = this.material(p.fur);
-    const patches = this.material(p.secondary);
+    const white = this.plush(p.fur);
+    const patches = this.plush(p.secondary);
     const pink = this.material(p.nose, 0.72);
     const ink = this.material(p.mouth);
     const hornMat = this.material(new THREE.Color('#e8ddc8'), 0.72);
@@ -1898,9 +1917,9 @@ export class IndependentSpecies3D {
   private buildMilkDragon(): void {
     const p = this.palette!;
     const model = this.model!;
-    const headFur = this.material(p.fur);
-    const bodyFur = this.material(p.secondary);
-    const bellyMat = this.material(new THREE.Color('#fff1ef'));
+    const headFur = this.plush(p.fur);
+    const bodyFur = this.plush(p.secondary);
+    const bellyMat = this.plush(new THREE.Color('#fff1ef'));
     const ink = this.material(p.mouth);
     const toeMat = this.material(new THREE.Color('#8a7466'));
     const iris = new THREE.Color('#2f6b46');
@@ -1964,10 +1983,10 @@ export class IndependentSpecies3D {
   private buildCapybara(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const dark = this.material(p.secondary);
+    const fur = this.plush(p.fur);
+    const dark = this.plush(p.secondary);
     const ink = this.material(p.mouth);
-    const muzzleMat = this.material(new THREE.Color('#f59b1f'), 0.74);
+    const muzzleMat = this.plush(new THREE.Color('#f59b1f'));
     const shorts = this.material(new THREE.Color('#a9602e'), 0.82);
 
     // Q 版水豚噜噜：矮墩芒果面包身 + 棕色短裤，橘子顶在头上
@@ -2031,10 +2050,10 @@ export class IndependentSpecies3D {
   private buildLoopy(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
-    const tailMat = this.material(tint(p.secondary, -0.10));
+    const fur = this.plush(p.fur);
+    const tailMat = this.plush(tint(p.secondary, -0.10));
     const ink = this.material(p.mouth);
-    const whiteBelly = this.material(new THREE.Color('#f3e3e6'), 0.86);
+    const whiteBelly = this.plush(new THREE.Color('#f3e3e6'));
     const darkPaw = this.material(new THREE.Color('#51283c'), 0.72);
     const tuftMat = this.material(new THREE.Color('#e8752f'), 0.72);
 
@@ -2137,7 +2156,7 @@ export class IndependentSpecies3D {
   private buildBubu(): void {
     const p = this.palette!;
     const model = this.model!;
-    const fur = this.material(p.fur);
+    const fur = this.plush(p.fur);
     const ink = this.material(p.mouth);
     const blushMat = this.material(new THREE.Color('#e6a96f'), 0.86);
     const rose = this.material(new THREE.Color('#e05260'), 0.62);

@@ -83,10 +83,18 @@ function hex(c: string | null | undefined, fallback: string): string {
 
 function shift(c: string, amt: number): string {
   const m = c.match(/^#([0-9a-f]{6})$/i);
-  if (!m) return c;
-  const h = m[1];
-  const ch = (i: number) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
-  return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+  if (m) {
+    const h = m[1];
+    const ch = (i: number) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
+    return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+  }
+  // 也支持 rgb(r,g,b)（shift 自身或蛋形头 tint 会产出这种格式）
+  const rgb = c.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (rgb) {
+    const ch = (v: string) => Math.max(0, Math.min(255, parseInt(v, 10) + amt));
+    return `rgb(${ch(rgb[1])},${ch(rgb[2])},${ch(rgb[3])})`;
+  }
+  return c;
 }
 
 /** 无描边色块：和 3D 的 MeshBasicMaterial 一样，颜色本身就是轮廓。 */
@@ -98,13 +106,31 @@ function fillEllipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: nu
 }
 
 /**
+ * 软陶质感填充：和猫咪 2D 的径向渐变同理，左上偏亮、底部略沉，
+ * 让纯色块有体积感。幅度刻意做小，保持干净不发脏。
+ */
+function plushFill(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string): void {
+  ctx.beginPath();
+  ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
+  const g = ctx.createRadialGradient(
+    x - rx * 0.28, y - ry * 0.42, rx * 0.08,
+    x + rx * 0.10, y + ry * 0.18, Math.max(rx, ry) * 1.12,
+  );
+  g.addColorStop(0, shift(color, 16));
+  g.addColorStop(0.55, color);
+  g.addColorStop(1, shift(color, -18));
+  ctx.fillStyle = g;
+  ctx.fill();
+}
+
+/**
  * 淡淡的同色系轮廓：比底色略深一点的椭圆垫在底层，露出一圈干净收边。
  * 用填充叠加而不是 stroke，避免头/身色块交接处出现难看的交叉横线。
  * 不是黑描边（用户明确不要黑边），只是同色压暗的版本。
  */
 function fillSoftEdge(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string): void {
   fillEllipse(ctx, x, y, rx + 5, ry + 5, shift(color, -20));
-  fillEllipse(ctx, x, y, rx, ry, color);
+  plushFill(ctx, x, y, rx, ry, color);
 }
 
 function fillPoly(ctx: CanvasRenderingContext2D, pts: Array<[number, number]>, color: string): void {
