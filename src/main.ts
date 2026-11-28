@@ -116,6 +116,8 @@ interface UpdateInfo {
   assetSize: number | null;
   installKind: string;
   notesSummary: string;
+  /** True when the REST API was blocked and we fell back to Atom / local info. */
+  checkDegraded?: boolean;
 }
 
 interface UpdateProgressEvent {
@@ -125,6 +127,7 @@ interface UpdateProgressEvent {
 }
 
 const DISMISSED_UPDATE_STORAGE_KEY = 'kurocat_dismissed_update_version';
+const DESKTOPPET_RELEASES_PAGE = 'https://github.com/daxian942-tech/DesktopPet/releases/latest';
 
 function loadDismissedVersion(): string | null {
   try {
@@ -1462,20 +1465,36 @@ function handleUpdateProgressEvent(ev: UpdateProgressEvent, fromManual = false):
       updateBusy = false;
       if (latestUpdateInfo?.hasUpdate) {
         const ver = latestUpdateInfo.latestVersion;
+        const degraded = Boolean(latestUpdateInfo.checkDegraded);
         setUpdateHint(`⬆ v${ver}`, 'ready');
-        if (fromManual || dismissedVersion !== ver) {
-          showUpdateToast(formatAvailableUpdateText(ver), {
-            showInstall: Boolean(latestUpdateInfo.downloadUrl),
-            showOpen: !latestUpdateInfo.downloadUrl,
-            kind: 'update',
-          });
+        if (fromManual || dismissedVersion !== ver || degraded) {
+          showUpdateToast(
+            degraded
+              ? `⚠ 发现 v${ver}，自动更新接口受限，请前往发布页下载`
+              : formatAvailableUpdateText(ver),
+            {
+              showInstall: Boolean(latestUpdateInfo.downloadUrl),
+              showOpen: !latestUpdateInfo.downloadUrl,
+              autoHideMs: degraded ? 6500 : undefined,
+              kind: degraded ? 'transient' : 'update',
+            },
+          );
         }
       }
       break;
     case 'up_to_date':
       updateBusy = false;
-      setUpdateHint(`✓ v${appVersion}`);
-      showUpdateToast(`✓ ${t('toast.up_to_date', { ver: appVersion })}`, { autoHideMs: 2600, kind: 'transient' });
+      if (ev.info?.checkDegraded) {
+        setUpdateHint('↗', 'default');
+        showUpdateToast(`⚠ ${ev.info.notesSummary || '自动检查暂不可用，可前往发布页查看'}`, {
+          showOpen: true,
+          autoHideMs: 5200,
+          kind: 'transient',
+        });
+      } else {
+        setUpdateHint(`✓ v${appVersion}`);
+        showUpdateToast(`✓ ${t('toast.up_to_date', { ver: appVersion })}`, { autoHideMs: 2600, kind: 'transient' });
+      }
       break;
     case 'downloading':
     case 'verifying':
@@ -1484,15 +1503,22 @@ function handleUpdateProgressEvent(ev: UpdateProgressEvent, fromManual = false):
       setUpdateHint(t('menu.checking_short'), 'ready');
       showUpdateToast(`⏳ ${ev.message}`, { busy: true, kind: 'transient' });
       break;
-    case 'error':
+    case 'error': {
       updateBusy = false;
       setUpdateHint('⚠', 'error');
-      showUpdateToast(`⚠ ${ev.message}`, {
-        showOpen: true,
-        autoHideMs: 5200,
-        kind: 'transient',
-      });
+      // GitHub's unauthenticated API often answers 403 (rate limit / proxy).
+      // Never surface the raw status code as if the app itself were broken.
+      const blocked = /HTTP\s*(403|429)|Forbidden|rate\s*limit|服务器返回|接口受限/i.test(ev.message);
+      showUpdateToast(
+        blocked ? '⚠ 自动更新接口暂不可用，可打开发布页查看' : `⚠ ${ev.message}`,
+        {
+          showOpen: true,
+          autoHideMs: 5200,
+          kind: 'transient',
+        },
+      );
       break;
+    }
   }
 }
 
@@ -1602,7 +1628,7 @@ async function bootstrap(): Promise<void> {
 
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/KuroCat/releases/latest';
+    const url = latestUpdateInfo?.releaseUrl || DESKTOPPET_RELEASES_PAGE;
     void invoke('open_release_page', { url });
   });
 

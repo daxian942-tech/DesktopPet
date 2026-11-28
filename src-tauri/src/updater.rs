@@ -8,6 +8,9 @@ use tauri::{AppHandle, Emitter};
 // the original KuroCat 5.x line.
 const REPO_API_LATEST: &str = "https://api.github.com/repos/daxian942-tech/DesktopPet/releases/latest";
 const REPO_RELEASES_PAGE: &str = "https://github.com/daxian942-tech/DesktopPet/releases/latest";
+// Public Atom feed on github.com (not api.github.com): no unauthenticated API
+// quota, so it stays readable when the REST API answers 403 rate-limit / proxy.
+const REPO_RELEASES_ATOM: &str = "https://github.com/daxian942-tech/DesktopPet/releases.atom";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -40,6 +43,10 @@ pub struct UpdateInfo {
     pub asset_size: Option<u64>,
     pub install_kind: String,
     pub notes_summary: String,
+    /// True when the REST API was blocked (403/429/proxy) and the result came
+    /// from the public Atom feed or a local "cannot verify" fallback.
+    #[serde(default)]
+    pub check_degraded: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -619,7 +626,16 @@ fn fetch_latest_release_json() -> Result<String, String> {
     // mirror — a stale mirror is exactly what surfaced the wrong 5.1.3 version.
     fetch_json_from_url(
         REPO_API_LATEST,
-        Some("Accept: application/vnd.github+json\r\n"),
+        Some("Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n"),
+        20_000,
+    )
+}
+
+#[cfg(windows)]
+fn fetch_releases_atom() -> Result<String, String> {
+    fetch_json_from_url(
+        REPO_RELEASES_ATOM,
+        Some("Accept: application/atom+xml\r\n"),
         20_000,
     )
 }
@@ -670,34 +686,148 @@ fn fetch_latest_release_json() -> Result<String, String> {
     fetch_json_from_url(REPO_API_LATEST, "Accept: application/vnd.github+json", "10", "20")
 }
 
-pub fn check_latest_update() -> Result<UpdateInfo, String> {
-    let raw_json = fetch_latest_release_json()?;
-    let rel: GhRelease = serde_json::from_str(&raw_json)
-        .map_err(|e| format!("解析最新版本信息失败: {}", e))?;
+#[cfg(not(windows))]
+fn fetch_releases_atom() -> Result<String, String> {
+    fetch_json_from_url(REPO_RELEASES_ATOM, "Accept: application/atom+xml", "10", "20")
+}
 
-    let latest_clean = rel
-        .tag_name
-        .trim()
-        .trim_start_matches(['v', 'V'])
-        .to_string();
-    let has_update = is_newer_version(&latest_clean, CURRENT_VERSION);
-    let install_kind = detect_install_kind();
-    let asset = select_asset(&rel.assets, install_kind);
+/// Find the first `x.y.z`-shaped token inside arbitrary release titles.
+fn extract_version_token(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            let mut dots = 0;
+            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+                if bytes[i] == b'.' {
+                    dots += 1;
+                }
+                i += 1;
+            }
+            if dots == 2 {
+                let token = &s[start..i];
+                if parse_semver(token) != (0, 0, 0) {
+                    return Some(token.trim_end_matches('.').to_string());
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
 
-    let info = UpdateInfo {
+/// Extract (version, release page URL) from the first <entry> of a GitHub
+/// releases Atom feed. Deliberately dependency-free: no XML crate is needed
+/// for the tiny, stable shape GitHub emits.
+fn parse_latest_from_atom(xml: &str) -> Option<(String, String)> {
+    let start = xml.find("<entry")?;
+    let rest = &xml[start..];
+    let end = rest.find("</entry>")?;
+    let entry = &rest[..end];
+
+    let mut release_url = String::new();
+    if let Some(p) = entry.find("href=\"") {
+        let tail = &entry[p + 6..];
+        if let Some(e) = tail.find('"') {
+            release_url = tail[..e].trim().to_string();
+        }
+    }
+
+    let mut title = String::new();
+    if let Some(p) = entry.find("<title") {
+        let tail = &entry[p..];
+        if let Some(gt) = tail.find('>') {
+            let text = &tail[gt + 1..];
+            if let Some(e) = text.find('<') {
+                title = text[..e].trim().to_string();
+            }
+        }
+    }
+
+    // Prefer the /tag/vX.Y.Z link; release titles can be free-form prose.
+    let tag = release_url
+        .rfind("/tag/")
+        .map(|p| release_url[p + 5..].trim().to_string())
+        .unwrap_or_default();
+    let version = extract_version_token(&tag)
+        .or_else(|| extract_version_token(&title))
+        .unwrap_or_default();
+    if version.is_empty() {
+        return None;
+    }
+    Some((version, release_url))
+}
+
+/// Build a safe, non-fatal result when GitHub's REST API is unavailable.
+/// No downloadUrl: the UI will offer "open release page" instead of trying
+/// to auto-install from an unverified source.
+fn degraded_update_info(latest: Option<(String, String)>) -> UpdateInfo {
+    let (latest_version, release_url) = latest
+        .unwrap_or_else(|| (CURRENT_VERSION.to_string(), REPO_RELEASES_PAGE.to_string()));
+    UpdateInfo {
         current_version: CURRENT_VERSION.to_string(),
-        latest_version: latest_clean,
-        has_update,
-        release_url: rel
-            .html_url
-            .unwrap_or_else(|| REPO_RELEASES_PAGE.to_string()),
-        asset_name: asset.map(|a| a.name.clone()),
-        download_url: asset.map(|a| a.browser_download_url.clone()),
-        asset_sha256: asset.and_then(|a| extract_sha256(&a.digest)),
-        asset_size: asset.and_then(|a| a.size),
-        install_kind: install_kind.to_string(),
-        notes_summary: summarize_notes(rel.body.as_deref()),
-    };
+        latest_version: latest_version.clone(),
+        has_update: is_newer_version(&latest_version, CURRENT_VERSION),
+        release_url: if release_url.is_empty() {
+            REPO_RELEASES_PAGE.to_string()
+        } else {
+            release_url
+        },
+        asset_name: None,
+        download_url: None,
+        asset_sha256: None,
+        asset_size: None,
+        install_kind: detect_install_kind().to_string(),
+        notes_summary: "自动更新接口受限，请前往发布页查看最新版本。".to_string(),
+        check_degraded: true,
+    }
+}
+
+pub fn check_latest_update() -> Result<UpdateInfo, String> {
+    // GitHub's unauthenticated REST API has a 60 req/h/IP quota and is often
+    // blocked by corporate proxies, both of which surface as HTTP 403. Treat
+    // any API failure as "degraded", never as a user-facing error.
+    let api_release: Option<GhRelease> = fetch_latest_release_json()
+        .ok()
+        .and_then(|raw| serde_json::from_str::<GhRelease>(&raw).ok());
+
+    if let Some(rel) = api_release {
+        let latest_clean = rel
+            .tag_name
+            .trim()
+            .trim_start_matches(['v', 'V'])
+            .to_string();
+        let has_update = is_newer_version(&latest_clean, CURRENT_VERSION);
+        let install_kind = detect_install_kind();
+        let asset = select_asset(&rel.assets, install_kind);
+
+        let info = UpdateInfo {
+            current_version: CURRENT_VERSION.to_string(),
+            latest_version: latest_clean,
+            has_update,
+            release_url: rel
+                .html_url
+                .unwrap_or_else(|| REPO_RELEASES_PAGE.to_string()),
+            asset_name: asset.map(|a| a.name.clone()),
+            download_url: asset.map(|a| a.browser_download_url.clone()),
+            asset_sha256: asset.and_then(|a| extract_sha256(&a.digest)),
+            asset_size: asset.and_then(|a| a.size),
+            install_kind: install_kind.to_string(),
+            notes_summary: summarize_notes(rel.body.as_deref()),
+            check_degraded: false,
+        };
+        store_cached_update_info(&info);
+        return Ok(info);
+    }
+
+    // Fallback 1: public Atom feed on github.com (no API quota). It carries
+    // the latest tag but no asset URLs, so the UI offers "open release page".
+    let atom_latest = fetch_releases_atom()
+        .ok()
+        .and_then(|xml| parse_latest_from_atom(&xml));
+    let info = degraded_update_info(atom_latest);
     store_cached_update_info(&info);
     Ok(info)
 }
@@ -1137,7 +1267,9 @@ pub fn start_background_update_checker(app: AppHandle) {
         std::thread::sleep(std::time::Duration::from_secs(8));
         loop {
             if let Ok(info) = check_latest_update() {
-                if info.has_update {
+                // Degraded results come from Atom / local fallback: never nag
+                // the user with an automatic "new version" banner in that case.
+                if info.has_update && !info.check_degraded {
                     emit_progress(
                         &app,
                         "available",
@@ -1163,6 +1295,35 @@ mod tests {
         assert!(is_newer_version("5.0.0", "4.9.9"));
         assert!(!is_newer_version("4.4.0", "4.4.0"));
         assert!(!is_newer_version("v4.3.9", "4.4.0"));
+    }
+
+    #[test]
+    fn atom_feed_parses_latest_tag_without_api() {
+        let sample = r#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>tag:github.com,2008:Repository/123/v1.2.3</id>
+    <title>DesktopPet v1.2.3 修复更新</title>
+    <link type="text/html" rel="alternate" href="https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.2.3" />
+  </entry>
+  <entry>
+    <title>v1.0.2</title>
+    <link href="https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.2" />
+  </entry>
+</feed>"#;
+        let (ver, url) = parse_latest_from_atom(sample).expect("first atom entry should parse");
+        assert_eq!(ver, "1.2.3");
+        assert!(url.contains("/releases/tag/v1.2.3"));
+    }
+
+    #[test]
+    fn degraded_result_never_exposes_raw_http_error() {
+        let info = degraded_update_info(None);
+        assert!(info.check_degraded);
+        assert!(!info.has_update);
+        assert!(info.download_url.is_none());
+        assert!(info.release_url.contains("daxian942-tech/DesktopPet"));
+        assert!(!info.notes_summary.contains("HTTP 403"));
     }
 
     #[test]

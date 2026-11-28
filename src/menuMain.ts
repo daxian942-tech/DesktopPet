@@ -79,6 +79,8 @@ interface UpdateInfo {
   assetSize: number | null;
   installKind: string;
   notesSummary: string;
+  /** True when the REST API was blocked and we fell back to Atom / local info. */
+  checkDegraded?: boolean;
 }
 
 interface UpdateProgressEvent {
@@ -139,6 +141,10 @@ let opacitySliderDragging = false;
 let currentAppVersion = '1.0.2';
 let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
+// When GitHub's REST API answers 403, the footer button becomes a direct
+// "open release page" shortcut instead of showing a raw error / Retry.
+let updateCheckDegradedUrl: string | null = null;
+const DESKTOPPET_RELEASES_PAGE = 'https://github.com/daxian942-tech/DesktopPet/releases/latest';
 let activeTab: MenuTabId = 'appearance';
 let settingsPatchSeq = 0;
 /** 是否运行在 Tauri 里（bootstrap 里探测后回填），提醒触发等 IPC 要据此判断。 */
@@ -849,11 +855,21 @@ async function triggerManualUpdateCheck(): Promise<void> {
   try {
     const info = await invoke<UpdateInfo>('check_for_update');
     updateBusy = false;
+    cachedUpdateInfo = info;
+    if (info.checkDegraded) {
+      // No raw "服务器返回 HTTP 403" / "Retry": the footer now opens the
+      // release page directly so the user can still check manually.
+      updateCheckDegradedUrl = info.releaseUrl || DESKTOPPET_RELEASES_PAGE;
+      renderFooterUpdateState(
+        info.hasUpdate ? `↗ v${info.latestVersion}` : '↗ 打开发布页',
+        false,
+      );
+      return;
+    }
+    updateCheckDegradedUrl = null;
     if (info.hasUpdate) {
-      cachedUpdateInfo = info;
       renderFooterUpdateState(`⬆ ${t('menu.update_ready', { ver: info.latestVersion })}`, true);
     } else {
-      cachedUpdateInfo = info;
       renderFooterUpdateState(`✓ v${info.currentVersion}`, false);
       setTimeout(() => {
         renderFooterUpdateState();
@@ -861,10 +877,8 @@ async function triggerManualUpdateCheck(): Promise<void> {
     }
   } catch {
     updateBusy = false;
-    renderFooterUpdateState('⚠ Retry', false);
-    setTimeout(() => {
-      renderFooterUpdateState();
-    }, 2200);
+    updateCheckDegradedUrl = DESKTOPPET_RELEASES_PAGE;
+    renderFooterUpdateState('↗ 打开发布页', false);
   }
 }
 
@@ -1085,7 +1099,14 @@ async function bootstrap(): Promise<void> {
           closeMenu();
           break;
         case 'check-update':
-          void triggerManualUpdateCheck();
+          if (updateCheckDegradedUrl) {
+            const url = updateCheckDegradedUrl;
+            updateCheckDegradedUrl = null;
+            renderFooterUpdateState();
+            void invoke('open_release_page', { url });
+          } else {
+            void triggerManualUpdateCheck();
+          }
           break;
         case 'quit':
           void invoke('quit_app');
@@ -1262,6 +1283,9 @@ async function bootstrap(): Promise<void> {
   await listen<UpdateProgressEvent>('kuro-update-status', (ev) => {
     if (ev.payload.info) {
       cachedUpdateInfo = ev.payload.info;
+      updateCheckDegradedUrl = ev.payload.info.checkDegraded
+        ? ev.payload.info.releaseUrl || DESKTOPPET_RELEASES_PAGE
+        : null;
     }
     if (ev.payload.stage === 'available' && cachedUpdateInfo?.hasUpdate) {
       updateBusy = false;
@@ -1275,7 +1299,8 @@ async function bootstrap(): Promise<void> {
       renderFooterUpdateState(t('menu.checking_short'), true);
     } else if (ev.payload.stage === 'up_to_date' || ev.payload.stage === 'error') {
       updateBusy = false;
-      renderFooterUpdateState();
+      if (updateCheckDegradedUrl) renderFooterUpdateState('↗ 打开发布页', false);
+      else renderFooterUpdateState();
     }
   });
 
@@ -1293,12 +1318,16 @@ async function bootstrap(): Promise<void> {
       }
       if (cachedUpd) {
         cachedUpdateInfo = cachedUpd;
+        updateCheckDegradedUrl = cachedUpd.checkDegraded
+          ? cachedUpd.releaseUrl || DESKTOPPET_RELEASES_PAGE
+          : null;
       }
       if (resolvedLoc) {
         resolvedBackendLocale = resolvedLoc;
       }
       syncUI();
-      renderFooterUpdateState();
+      if (updateCheckDegradedUrl) renderFooterUpdateState('↗ 打开发布页', false);
+      else renderFooterUpdateState();
       if (tabBodyEl) tabBodyEl.scrollTop = 0;
     } catch {}
   });
