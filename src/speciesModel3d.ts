@@ -111,8 +111,8 @@ const QUADRUPED_YAW: Partial<Record<NonCatSpecies, number>> = {
 };
 
 /**
- * 扁平卡通渲染基准（对标 BongoCat / Shimeji 那类桌宠：纯色块 + 深色轮廓线，
- * 没有 PBR 高光、没有塑料渐变）。数值来自 keyboard3d.ts 实测：
+ * 纯色插画渲染基准（与原版猫咪一致：MeshBasicMaterial 纯色块，不吃灯光、
+ * 没有暗面、没有黑色描边）。数值来自 keyboard3d.ts 实测：
  *   boardGroup.y 0.015 + boardH 0.112 + capH 0.056 = 0.183 世界高度
  * species root 由 syncFrom 同步 catRoot，scale 恒为 0.9。
  */
@@ -134,11 +134,6 @@ const TYPING_HAND_SHOULDER_Y: Partial<Record<NonCatSpecies, number>> = {
   loopy: 0.82,
   bubu: 0.82,
 };
-/** 轮廓线：只给构成剪影的大件加，避免小零件被黑圈糊住、也控制 draw call */
-const OUTLINE_MIN_SIZE = 0.30;
-const OUTLINE_WIDTH = 0.024;
-const OUTLINE_COLOR = '#332a30';
-
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -174,12 +169,10 @@ export class IndependentSpecies3D {
   private currentSpecies: AnimalSpecies = 'cat';
   private skinKey = '';
   private palette: Palette | null = null;
-  /** 赛璐璐材质：按颜色缓存，全物种共用，换皮肤时统一释放 */
-  private readonly materials = new Map<string, THREE.MeshToonMaterial>();
+  /** 纯色材质：和原版猫咪一样用 MeshBasicMaterial，按颜色缓存，全物种共用 */
+  private readonly materials = new Map<string, THREE.MeshBasicMaterial>();
   /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
   private readonly geoCache = new Map<string, THREE.BufferGeometry>();
-  private readonly gradientMap: THREE.DataTexture;
-  private outlineMat: THREE.MeshBasicMaterial | null = null;
   private groundMat: THREE.MeshBasicMaterial | null = null;
   /** 本只动物是否已经建了伸向键盘的打字手（没有的统一补一对） */
   private hasTypingHands = false;
@@ -205,23 +198,15 @@ export class IndependentSpecies3D {
     this.root.scale.setScalar(0.9);
     scene.add(this.root);
 
-    // 三阶赛璐璐明暗：亮面 / 中间调 / 暗面。NearestFilter 才有干净的色块边界，
-    // 这正是扁平插画感的来源，也省掉了 PBR 的逐像素高光计算。
-    // 亮面为主、暗面只轻轻压一点：白色 / 浅色动物才不会被压成灰团子，
-    // 更接近 BongoCat 那种「纯色填充 + 黑线」的干净插画。
-    const steps = new Uint8Array([168, 214, 255]);
-    this.gradientMap = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
-    this.gradientMap.minFilter = THREE.NearestFilter;
-    this.gradientMap.magFilter = THREE.NearestFilter;
-    this.gradientMap.generateMipmaps = false;
-    this.gradientMap.needsUpdate = true;
-
-    // 灯光只负责提供明暗方向，不再靠强度堆出体积感（否则 toon 会全糊成最亮阶）
-    const sky = new THREE.HemisphereLight('#fff6ec', '#6d6070', 0.78);
+    // 和猫 / 键盘保持一致：全部改用不吃光的 MeshBasicMaterial 纯色块，
+    // 没有暗面、没有描边、没有 PBR 高光，颜色就是配置里的原色，最亮最干净。
+    // 这两盏灯保留原强度仅为兼容原场景（Basic / furShader 都不吃 scene light），
+    // 不再用来给角色堆体积感，避免角色相对猫明显发灰。
+    const sky = new THREE.HemisphereLight('#fff8ed', '#586272', 1.65);
     sky.name = 'independent-species-fill';
     scene.add(sky);
 
-    const key = new THREE.DirectionalLight('#ffffff', 0.92);
+    const key = new THREE.DirectionalLight('#ffffff', 2.15);
     key.name = 'independent-species-key';
     key.position.set(-3.2, 5.4, 4.6);
     scene.add(key);
@@ -384,22 +369,23 @@ export class IndependentSpecies3D {
     // Key presses arrive as booleans. Ease them with a fast attack and a
     // slower release, then add a small oscillation while held, so the paws
     // tap instead of snapping to a fixed pose and freezing there.
+    // 参考原版猫咪：打字时身体和头完全静止，只有手平滑地按下 / 抬起。
+    // 旧的 10.5rad/s 相位 + sin 微振荡 + 身体/头 beat 联动，会让整个人高频抽搐。
+    // 现在只用缓入缓出的按压值，不再叠任何周期性抖动。
     const easePress = (target: boolean, current: number): number => {
-      const rate = target ? 17 : 9;
+      const rate = target ? 9 : 6;
       return current + ((target ? 1 : 0) - current) * (1 - Math.exp(-rate * dt));
     };
     this.typingPress.left = easePress(options.typingLeft, this.typingPress.left);
     this.typingPress.right = easePress(options.typingRight, this.typingPress.right);
-    if (options.typingLeft) this.typingPhase.left += dt * 10.5;
-    if (options.typingRight) this.typingPhase.right += dt * 10.5;
-    const tapLeft = this.typingPress.left * (0.88 + 0.12 * Math.sin(this.typingPhase.left));
-    const tapRight = this.typingPress.right * (0.88 + 0.12 * Math.sin(this.typingPhase.right));
+    const tapLeft = this.typingPress.left;
+    const tapRight = this.typingPress.right;
 
     for (const limb of this.limbs) {
       limb.node.position.copy(limb.position);
       limb.node.rotation.copy(limb.rotation);
       limb.node.scale.copy(limb.scale);
-      limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.018 * awake;
+      limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.010 * awake;
       if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
       // 手掌每帧回到基准位，打字位移才不会累积
       if (limb.paw && limb.pawBaseY !== undefined) {
@@ -423,29 +409,16 @@ export class IndependentSpecies3D {
       const isLeft = limb.side < 0;
       const tap = (isLeft ? tapLeft : tapRight) * awake;
       if (tap < 0.002) continue;
-      const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-      limb.node.rotation.x += 0.075 * tap;
-      limb.node.rotation.z += limb.side * 0.022 * tap;
+      limb.node.rotation.x += 0.028 * tap;
+      limb.node.rotation.z += limb.side * 0.008 * tap;
       if (limb.paw && limb.pawBaseY !== undefined) {
-        const press = 0.044 * tap * (0.82 + 0.18 * Math.sin(phase + 0.4));
-        limb.paw.position.y = limb.pawBaseY - press;
-        limb.paw.scale.set(1 + 0.07 * tap, 1 - 0.14 * tap, 1 + 0.05 * tap);
+        limb.paw.position.y = limb.pawBaseY - 0.032 * tap;
+        limb.paw.scale.set(1 + 0.03 * tap, 1 - 0.07 * tap, 1 + 0.02 * tap);
       }
     }
 
-    // 打字协调：手敲击时身体轻微前倾 + 起伏、头跟着点，整体节奏连成一体
-    const typingAmt = Math.max(this.typingPress.left, this.typingPress.right) * awake;
-    if (typingAmt > 0.01) {
-      const beat = (Math.sin(this.typingPhase.left) + Math.sin(this.typingPhase.right)) * 0.25 + 0.5;
-      if (this.body) {
-        this.body.node.position.z += 0.016 * typingAmt;
-        this.body.node.position.y -= 0.007 * typingAmt * beat;
-      }
-      if (this.head) {
-        this.head.node.rotation.x += 0.022 * typingAmt * beat;
-        this.head.node.position.y -= 0.005 * typingAmt * beat;
-      }
-    }
+    // 身体 / 头在打字时保持静止（和猫一样）。常驻呼吸、眨眼、摆耳、摇尾
+    // 仍在上面的通用循环里缓慢进行，但不再随每次敲击抖动。
   }
 
   private createPalette(skin: CatSkinConfig): Palette {
@@ -470,18 +443,16 @@ export class IndependentSpecies3D {
   }
 
   /**
-   * 扁平赛璐璐材质。`roughness` 不再表示镜面粗糙度（toon 没有高光），而是
-   * 借用来给眼睛 / 掌垫这类小件一点明度区分，保持原有调用点的语义不破。
+   * 纯色材质：和原版猫咪一样用 MeshBasicMaterial，颜色就是配置里的原色（最亮），
+   * 不吃灯光、不产生暗面、没有高光。按颜色缓存，同色部件共享一个材质。
+   * `roughness` 是旧赛璐璐接口遗留参数，仅保留以兼容全部调用点。
    */
-  private material(color: THREE.Color, roughness = 0.78): THREE.MeshToonMaterial {
-    const key = `${color.getHexString()}:${roughness.toFixed(2)}`;
+  private material(color: THREE.Color, roughness = 0.78): THREE.MeshBasicMaterial {
+    void roughness;
+    const key = color.getHexString();
     const cached = this.materials.get(key);
     if (cached) return cached;
-    const shade = 0.90 + Math.min(1, Math.max(0, roughness)) * 0.10;
-    const mat = new THREE.MeshToonMaterial({
-      color: color.clone().multiplyScalar(shade),
-      gradientMap: this.gradientMap,
-    });
+    const mat = new THREE.MeshBasicMaterial({ color: color.clone() });
     this.materials.set(key, mat);
     return mat;
   }
@@ -497,18 +468,6 @@ export class IndependentSpecies3D {
     return geometry;
   }
 
-  /** 深色轮廓材质：inverted-hull 只渲染背面，被自身正面挡住后只剩外圈一条线 */
-  private getOutlineMat(): THREE.MeshBasicMaterial {
-    if (!this.outlineMat) {
-      this.outlineMat = new THREE.MeshBasicMaterial({
-        color: OUTLINE_COLOR,
-        side: THREE.BackSide,
-      });
-      this.outlineMat.userData.shared = true;
-    }
-    return this.outlineMat;
-  }
-
   /** 贴纸式接地阴影：一块淡色椭圆，替代 3D 阴影贴图，解决团子悬浮感 */
   private getGroundMat(): THREE.MeshBasicMaterial {
     if (!this.groundMat) {
@@ -522,31 +481,6 @@ export class IndependentSpecies3D {
       this.groundMat.userData.shared = true;
     }
     return this.groundMat;
-  }
-
-  /**
-   * 给构成剪影的大件加一圈深色轮廓线。小零件（眼睛、腮红、掌垫）不加，
-   * 否则会出现一堆黑圈、把表情糊掉，也让 draw call 白白翻倍。
-   */
-  private addOutline(
-    parent: THREE.Object3D,
-    geometry: THREE.BufferGeometry,
-    position: Vec3,
-    scale: Vec3,
-    rotation: Vec3,
-  ): void {
-    const size = Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]));
-    if (size < OUTLINE_MIN_SIZE) return;
-    const outline = new THREE.Mesh(geometry, this.getOutlineMat());
-    outline.position.set(...position);
-    outline.rotation.set(...rotation);
-    outline.scale.set(
-      scale[0] + OUTLINE_WIDTH,
-      scale[1] + OUTLINE_WIDTH,
-      scale[2] + OUTLINE_WIDTH,
-    );
-    outline.renderOrder = -1;
-    parent.add(outline);
   }
 
   private group(parent: THREE.Object3D, position: Vec3 = [0, 0, 0], rotation: Vec3 = [0, 0, 0]): THREE.Group {
@@ -590,9 +524,8 @@ export class IndependentSpecies3D {
       `sphere:${seg}:${rings}`,
       () => new THREE.SphereGeometry(1, seg, rings),
     );
-    const mesh = this.mesh(parent, geometry, mat, position, scale, rotation);
-    this.addOutline(parent, geometry, position, scale, rotation);
-    return mesh;
+    // 不再加深色描边：原版猫咪就是靠纯色剪影本身收边，黑边反而显得脏、发暗
+    return this.mesh(parent, geometry, mat, position, scale, rotation);
   }
 
   /**
@@ -763,10 +696,14 @@ export class IndependentSpecies3D {
     } = {},
   ): THREE.Group {
     const p = this.palette!;
+    // 参考原版猫咪的大亮眼：统一放大 16%，纯色 Basic 下眼睛更醒目更有神。
+    radius *= 1.16;
     const eye = this.group(parent, position, [0, 0, options.tilt || 0]);
     const aspect = options.aspect ?? 1;
     const style = options.style ?? 'round';
-    const irisMat = this.material(options.iris || p.eye, 0.30);
+    // 虹膜轻微提亮，避免深色眼睛在纯色脸上糊成一团
+    const irisColor = (options.iris || p.eye).clone().lerp(WHITE, 0.10);
+    const irisMat = this.material(irisColor, 0.30);
     const pupilMat = this.material(options.pupil || p.pupil, 0.20);
     const phase = position[0] < 0 ? 0 : 1.7;
 
@@ -787,25 +724,32 @@ export class IndependentSpecies3D {
     this.sphere(eye, irisMat, [0, 0, radius * 0.08], [radius, radius * aspect, radius * depth], [0, 0, 0], 24);
 
     // 3) 瞳孔（豆豆眼整颗就是黑豆，不再叠瞳孔）
-    const pupilZ = radius * (depth * 0.60 + 0.05);
+    // 瞳孔是贴在虹膜前表面的一层薄片（不是埋在球里、也不是和虹膜相交的球）。
+    // 旧版把瞳孔球埋进虹膜，白虹膜物种（青蛙）只剩一颗白球；
+    // 单纯前移又会和虹膜相交出锯齿状黑边。薄片放在虹膜前表面之外最干净。
+    const pupilZ = radius * (depth + 0.14);
     let pupilMesh: THREE.Mesh | null = null;
     if (style !== 'dot') {
       if (options.pupilShape === 'vertical') {
-        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.24, radius * aspect * 0.76, radius * 0.18], [0, 0, 0], 18);
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.24, radius * aspect * 0.76, radius * 0.05], [0, 0, 0], 18);
       } else if (options.pupilShape === 'horizontal') {
-        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.76, radius * aspect * 0.28, radius * 0.18], [0, 0, 0], 18);
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.76, radius * aspect * 0.28, radius * 0.05], [0, 0, 0], 18);
       } else {
-        const ps = options.pupilScale ?? (style === 'sparkle' ? 0.56 : 0.52);
-        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * ps, radius * aspect * ps * 1.12, radius * 0.20], [0, 0, 0], 18);
+        // 瞳孔略收，露出更多虹膜，眼睛更水亮（像猫的大椭圆眼）
+        const ps = options.pupilScale ?? (style === 'sparkle' ? 0.50 : 0.46);
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * ps, radius * aspect * ps * 1.12, radius * 0.05], [0, 0, 0], 18);
       }
       this.pupils.push({ node: pupilMesh, base: pupilMesh.scale.clone(), phase });
     }
 
     // 4) 高光：主光 + 次光（星星眼再加四向小星芒）
     if (options.glint ?? p.catchlight) {
-      const gz = radius * (depth * 0.86 + 0.10);
-      this.sphere(eye, this.material(WHITE, 0.14), [-radius * 0.30, radius * aspect * 0.30, gz], [radius * 0.27, radius * 0.27, radius * 0.13], [0, 0, 0], 14);
-      this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.32, -radius * aspect * 0.28, gz], [radius * 0.13, radius * 0.13, radius * 0.08], [0, 0, 0], 12);
+      // 高光浮在瞳孔薄片之前，才不会被瞳孔挡住 / 切出缺口
+      const gz = pupilZ + radius * 0.09;
+      // 纯白主高光 + 次高光 + 一点细碎光，纯色渲染里靠高光把眼睛点亮
+      this.sphere(eye, this.material(WHITE, 0.14), [-radius * 0.30, radius * aspect * 0.32, gz], [radius * 0.33, radius * 0.33, radius * 0.13], [0, 0, 0], 14);
+      this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.34, -radius * aspect * 0.30, gz], [radius * 0.16, radius * 0.16, radius * 0.08], [0, 0, 0], 12);
+      this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.02, radius * aspect * 0.52, gz * 0.98], [radius * 0.08, radius * 0.08, radius * 0.05], [0, 0, 0], 10);
       if (style === 'sparkle') {
         for (const [dx, dy, sx, sy] of [
           [-1, 0, 0.078, 0.030],
@@ -1880,7 +1824,7 @@ export class IndependentSpecies3D {
     // Lumbering walk plus the signature duang-duang bounce.
     this.motion((time, state) => {
       const awake = 1 - state.sleep;
-      const wobble = Math.sin(time * 2.5) * 0.045 * awake;
+      const wobble = Math.sin(time * 2.5) * 0.020 * awake;
       duang.scale.set(0.46 * (1 + wobble), 0.44 * (1 - wobble * 0.7), 0.32);
       const cycle = ((time % 8.6) + 8.6) % 8.6;
       const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin(((cycle - 3.2) / 2.2) * Math.PI) : 0;
@@ -1890,15 +1834,15 @@ export class IndependentSpecies3D {
       flame.visible = awake > 0.4 && duangBeat > 0.45;
       if (flame.visible) {
         flame.scale.setScalar(0.7 + duangBeat * 0.6);
-        flame.rotation.z = Math.sin(time * 18) * 0.18;
+        flame.rotation.z = Math.sin(time * 3.6) * 0.07;
       }
-      model.position.x += Math.sin(time * 1.35) * 0.018 * awake;
+      model.position.x += Math.sin(time * 1.35) * 0.008 * awake;
       if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.022 * awake;
       if (this.head) this.head.node.position.y += duangBeat * 0.025;
       const wave = beatMotion(time, 8.6, 3.2, 5.4);
       for (const limb of this.limbs) {
         if (!limb.front) continue;
-        limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.10 * awake;
+        limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.045 * awake;
         limb.node.rotation.z += limb.side * wave * 0.22;
         limb.node.position.y += wave * 0.05;
       }
@@ -2184,7 +2128,7 @@ export class IndependentSpecies3D {
         this.head.node.rotation.x += Math.sin(time * 0.85) * 0.022 * awake + wave * 0.06 + slump * 0.12;
         this.head.node.rotation.z += Math.sin(time * 0.6) * 0.018 * awake - slump * 0.20;
       }
-      looseThread.rotation.z = Math.sin(time * 2.4) * 0.25 * awake + slump * 0.5;
+      looseThread.rotation.z = Math.sin(time * 2.4) * 0.12 * awake + slump * 0.5;
       for (const limb of this.limbs) {
         if (limb.front && limb.side > 0) {
           limb.node.rotation.z += wave * 0.85;

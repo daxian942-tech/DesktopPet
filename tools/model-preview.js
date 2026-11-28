@@ -17398,76 +17398,6 @@
       this.type = "RawShaderMaterial";
     }
   };
-  var MeshToonMaterial = class extends Material {
-    /**
-     * Constructs a new mesh toon material.
-     *
-     * @param {Object} [parameters] - An object with one or more properties
-     * defining the material's appearance. Any property of the material
-     * (including any property from inherited materials) can be passed
-     * in here. Color values can be passed any type of value accepted
-     * by {@link Color#set}.
-     */
-    constructor(parameters) {
-      super();
-      this.isMeshToonMaterial = true;
-      this.defines = { "TOON": "" };
-      this.type = "MeshToonMaterial";
-      this.color = new Color(16777215);
-      this.map = null;
-      this.gradientMap = null;
-      this.lightMap = null;
-      this.lightMapIntensity = 1;
-      this.aoMap = null;
-      this.aoMapIntensity = 1;
-      this.emissive = new Color(0);
-      this.emissiveIntensity = 1;
-      this.emissiveMap = null;
-      this.bumpMap = null;
-      this.bumpScale = 1;
-      this.normalMap = null;
-      this.normalMapType = TangentSpaceNormalMap;
-      this.normalScale = new Vector2(1, 1);
-      this.displacementMap = null;
-      this.displacementScale = 1;
-      this.displacementBias = 0;
-      this.alphaMap = null;
-      this.wireframe = false;
-      this.wireframeLinewidth = 1;
-      this.wireframeLinecap = "round";
-      this.wireframeLinejoin = "round";
-      this.fog = true;
-      this.setValues(parameters);
-    }
-    copy(source) {
-      super.copy(source);
-      this.color.copy(source.color);
-      this.map = source.map;
-      this.gradientMap = source.gradientMap;
-      this.lightMap = source.lightMap;
-      this.lightMapIntensity = source.lightMapIntensity;
-      this.aoMap = source.aoMap;
-      this.aoMapIntensity = source.aoMapIntensity;
-      this.emissive.copy(source.emissive);
-      this.emissiveMap = source.emissiveMap;
-      this.emissiveIntensity = source.emissiveIntensity;
-      this.bumpMap = source.bumpMap;
-      this.bumpScale = source.bumpScale;
-      this.normalMap = source.normalMap;
-      this.normalMapType = source.normalMapType;
-      this.normalScale.copy(source.normalScale);
-      this.displacementMap = source.displacementMap;
-      this.displacementScale = source.displacementScale;
-      this.displacementBias = source.displacementBias;
-      this.alphaMap = source.alphaMap;
-      this.wireframe = source.wireframe;
-      this.wireframeLinewidth = source.wireframeLinewidth;
-      this.wireframeLinecap = source.wireframeLinecap;
-      this.wireframeLinejoin = source.wireframeLinejoin;
-      this.fog = source.fog;
-      return this;
-    }
-  };
   var MeshDepthMaterial = class extends Material {
     /**
      * Constructs a new mesh depth material.
@@ -32143,9 +32073,6 @@ void main() {
     loopy: 0.82,
     bubu: 0.82
   };
-  var OUTLINE_MIN_SIZE = 0.3;
-  var OUTLINE_WIDTH = 0.024;
-  var OUTLINE_COLOR = "#332a30";
   function clamp01(value) {
     return Math.max(0, Math.min(1, value));
   }
@@ -32168,12 +32095,10 @@ void main() {
     currentSpecies = "cat";
     skinKey = "";
     palette = null;
-    /** 赛璐璐材质：按颜色缓存，全物种共用，换皮肤时统一释放 */
+    /** 纯色材质：和原版猫咪一样用 MeshBasicMaterial，按颜色缓存，全物种共用 */
     materials = /* @__PURE__ */ new Map();
     /** 几何按参数缓存并标记 shared，避免每只动物重复上传同一份顶点数据 */
     geoCache = /* @__PURE__ */ new Map();
-    gradientMap;
-    outlineMat = null;
     groundMat = null;
     /** 本只动物是否已经建了伸向键盘的打字手（没有的统一补一对） */
     hasTypingHands = false;
@@ -32196,16 +32121,10 @@ void main() {
       this.root.name = "independent-species-root";
       this.root.scale.setScalar(0.9);
       scene.add(this.root);
-      const steps = new Uint8Array([168, 214, 255]);
-      this.gradientMap = new DataTexture(steps, steps.length, 1, RedFormat);
-      this.gradientMap.minFilter = NearestFilter;
-      this.gradientMap.magFilter = NearestFilter;
-      this.gradientMap.generateMipmaps = false;
-      this.gradientMap.needsUpdate = true;
-      const sky = new HemisphereLight("#fff6ec", "#6d6070", 0.78);
+      const sky = new HemisphereLight("#fff8ed", "#586272", 1.65);
       sky.name = "independent-species-fill";
       scene.add(sky);
-      const key = new DirectionalLight("#ffffff", 0.92);
+      const key = new DirectionalLight("#ffffff", 2.15);
       key.name = "independent-species-key";
       key.position.set(-3.2, 5.4, 4.6);
       scene.add(key);
@@ -32321,20 +32240,18 @@ void main() {
         node.scale.copy(scale);
       }
       const easePress = (target, current) => {
-        const rate = target ? 17 : 9;
+        const rate = target ? 9 : 6;
         return current + ((target ? 1 : 0) - current) * (1 - Math.exp(-rate * dt));
       };
       this.typingPress.left = easePress(options.typingLeft, this.typingPress.left);
       this.typingPress.right = easePress(options.typingRight, this.typingPress.right);
-      if (options.typingLeft) this.typingPhase.left += dt * 10.5;
-      if (options.typingRight) this.typingPhase.right += dt * 10.5;
-      const tapLeft = this.typingPress.left * (0.88 + 0.12 * Math.sin(this.typingPhase.left));
-      const tapRight = this.typingPress.right * (0.88 + 0.12 * Math.sin(this.typingPhase.right));
+      const tapLeft = this.typingPress.left;
+      const tapRight = this.typingPress.right;
       for (const limb of this.limbs) {
         limb.node.position.copy(limb.position);
         limb.node.rotation.copy(limb.rotation);
         limb.node.scale.copy(limb.scale);
-        limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.018 * awake;
+        limb.node.rotation.x += Math.sin(time * 1.45 + limb.phase) * 0.01 * awake;
         if (options.petting && limb.front) limb.node.rotation.z += limb.side * 0.025;
         if (limb.paw && limb.pawBaseY !== void 0) {
           limb.paw.position.y = limb.pawBaseY;
@@ -32348,25 +32265,11 @@ void main() {
         const isLeft = limb.side < 0;
         const tap = (isLeft ? tapLeft : tapRight) * awake;
         if (tap < 2e-3) continue;
-        const phase = isLeft ? this.typingPhase.left : this.typingPhase.right;
-        limb.node.rotation.x += 0.075 * tap;
-        limb.node.rotation.z += limb.side * 0.022 * tap;
+        limb.node.rotation.x += 0.028 * tap;
+        limb.node.rotation.z += limb.side * 8e-3 * tap;
         if (limb.paw && limb.pawBaseY !== void 0) {
-          const press = 0.044 * tap * (0.82 + 0.18 * Math.sin(phase + 0.4));
-          limb.paw.position.y = limb.pawBaseY - press;
-          limb.paw.scale.set(1 + 0.07 * tap, 1 - 0.14 * tap, 1 + 0.05 * tap);
-        }
-      }
-      const typingAmt = Math.max(this.typingPress.left, this.typingPress.right) * awake;
-      if (typingAmt > 0.01) {
-        const beat = (Math.sin(this.typingPhase.left) + Math.sin(this.typingPhase.right)) * 0.25 + 0.5;
-        if (this.body) {
-          this.body.node.position.z += 0.016 * typingAmt;
-          this.body.node.position.y -= 7e-3 * typingAmt * beat;
-        }
-        if (this.head) {
-          this.head.node.rotation.x += 0.022 * typingAmt * beat;
-          this.head.node.position.y -= 5e-3 * typingAmt * beat;
+          limb.paw.position.y = limb.pawBaseY - 0.032 * tap;
+          limb.paw.scale.set(1 + 0.03 * tap, 1 - 0.07 * tap, 1 + 0.02 * tap);
         }
       }
     }
@@ -32391,18 +32294,16 @@ void main() {
       };
     }
     /**
-     * 扁平赛璐璐材质。`roughness` 不再表示镜面粗糙度（toon 没有高光），而是
-     * 借用来给眼睛 / 掌垫这类小件一点明度区分，保持原有调用点的语义不破。
+     * 纯色材质：和原版猫咪一样用 MeshBasicMaterial，颜色就是配置里的原色（最亮），
+     * 不吃灯光、不产生暗面、没有高光。按颜色缓存，同色部件共享一个材质。
+     * `roughness` 是旧赛璐璐接口遗留参数，仅保留以兼容全部调用点。
      */
     material(color, roughness = 0.78) {
-      const key = `${color.getHexString()}:${roughness.toFixed(2)}`;
+      void roughness;
+      const key = color.getHexString();
       const cached = this.materials.get(key);
       if (cached) return cached;
-      const shade = 0.9 + Math.min(1, Math.max(0, roughness)) * 0.1;
-      const mat = new MeshToonMaterial({
-        color: color.clone().multiplyScalar(shade),
-        gradientMap: this.gradientMap
-      });
+      const mat = new MeshBasicMaterial({ color: color.clone() });
       this.materials.set(key, mat);
       return mat;
     }
@@ -32415,17 +32316,6 @@ void main() {
         this.geoCache.set(key, geometry);
       }
       return geometry;
-    }
-    /** 深色轮廓材质：inverted-hull 只渲染背面，被自身正面挡住后只剩外圈一条线 */
-    getOutlineMat() {
-      if (!this.outlineMat) {
-        this.outlineMat = new MeshBasicMaterial({
-          color: OUTLINE_COLOR,
-          side: BackSide
-        });
-        this.outlineMat.userData.shared = true;
-      }
-      return this.outlineMat;
     }
     /** 贴纸式接地阴影：一块淡色椭圆，替代 3D 阴影贴图，解决团子悬浮感 */
     getGroundMat() {
@@ -32440,24 +32330,6 @@ void main() {
         this.groundMat.userData.shared = true;
       }
       return this.groundMat;
-    }
-    /**
-     * 给构成剪影的大件加一圈深色轮廓线。小零件（眼睛、腮红、掌垫）不加，
-     * 否则会出现一堆黑圈、把表情糊掉，也让 draw call 白白翻倍。
-     */
-    addOutline(parent, geometry, position, scale, rotation) {
-      const size = Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]));
-      if (size < OUTLINE_MIN_SIZE) return;
-      const outline = new Mesh(geometry, this.getOutlineMat());
-      outline.position.set(...position);
-      outline.rotation.set(...rotation);
-      outline.scale.set(
-        scale[0] + OUTLINE_WIDTH,
-        scale[1] + OUTLINE_WIDTH,
-        scale[2] + OUTLINE_WIDTH
-      );
-      outline.renderOrder = -1;
-      parent.add(outline);
     }
     group(parent, position = [0, 0, 0], rotation = [0, 0, 0]) {
       const group = new Group();
@@ -32481,9 +32353,7 @@ void main() {
         `sphere:${seg}:${rings}`,
         () => new SphereGeometry(1, seg, rings)
       );
-      const mesh = this.mesh(parent, geometry, mat, position, scale, rotation);
-      this.addOutline(parent, geometry, position, scale, rotation);
-      return mesh;
+      return this.mesh(parent, geometry, mat, position, scale, rotation);
     }
     /**
      * Blender-authored organic limb. The prototype spans y in [-0.5, 0.5] with
@@ -32577,10 +32447,12 @@ void main() {
     }
     eye(parent, position, radius, options = {}) {
       const p = this.palette;
+      radius *= 1.16;
       const eye = this.group(parent, position, [0, 0, options.tilt || 0]);
       const aspect2 = options.aspect ?? 1;
       const style = options.style ?? "round";
-      const irisMat = this.material(options.iris || p.eye, 0.3);
+      const irisColor = (options.iris || p.eye).clone().lerp(WHITE, 0.1);
+      const irisMat = this.material(irisColor, 0.3);
       const pupilMat = this.material(options.pupil || p.pupil, 0.2);
       const phase = position[0] < 0 ? 0 : 1.7;
       if (options.sclera) {
@@ -32595,23 +32467,24 @@ void main() {
       }
       const depth = options.depth ?? (style === "dot" ? 0.44 : 0.58);
       this.sphere(eye, irisMat, [0, 0, radius * 0.08], [radius, radius * aspect2, radius * depth], [0, 0, 0], 24);
-      const pupilZ = radius * (depth * 0.6 + 0.05);
+      const pupilZ = radius * (depth + 0.14);
       let pupilMesh = null;
       if (style !== "dot") {
         if (options.pupilShape === "vertical") {
-          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.24, radius * aspect2 * 0.76, radius * 0.18], [0, 0, 0], 18);
+          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.24, radius * aspect2 * 0.76, radius * 0.05], [0, 0, 0], 18);
         } else if (options.pupilShape === "horizontal") {
-          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.76, radius * aspect2 * 0.28, radius * 0.18], [0, 0, 0], 18);
+          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.76, radius * aspect2 * 0.28, radius * 0.05], [0, 0, 0], 18);
         } else {
-          const ps = options.pupilScale ?? (style === "sparkle" ? 0.56 : 0.52);
-          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * ps, radius * aspect2 * ps * 1.12, radius * 0.2], [0, 0, 0], 18);
+          const ps = options.pupilScale ?? (style === "sparkle" ? 0.5 : 0.46);
+          pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * ps, radius * aspect2 * ps * 1.12, radius * 0.05], [0, 0, 0], 18);
         }
         this.pupils.push({ node: pupilMesh, base: pupilMesh.scale.clone(), phase });
       }
       if (options.glint ?? p.catchlight) {
-        const gz = radius * (depth * 0.86 + 0.1);
-        this.sphere(eye, this.material(WHITE, 0.14), [-radius * 0.3, radius * aspect2 * 0.3, gz], [radius * 0.27, radius * 0.27, radius * 0.13], [0, 0, 0], 14);
-        this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.32, -radius * aspect2 * 0.28, gz], [radius * 0.13, radius * 0.13, radius * 0.08], [0, 0, 0], 12);
+        const gz = pupilZ + radius * 0.09;
+        this.sphere(eye, this.material(WHITE, 0.14), [-radius * 0.3, radius * aspect2 * 0.32, gz], [radius * 0.33, radius * 0.33, radius * 0.13], [0, 0, 0], 14);
+        this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.34, -radius * aspect2 * 0.3, gz], [radius * 0.16, radius * 0.16, radius * 0.08], [0, 0, 0], 12);
+        this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.02, radius * aspect2 * 0.52, gz * 0.98], [radius * 0.08, radius * 0.08, radius * 0.05], [0, 0, 0], 10);
         if (style === "sparkle") {
           for (const [dx, dy, sx, sy] of [
             [-1, 0, 0.078, 0.03],
@@ -33547,7 +33420,7 @@ void main() {
       this.trackTail(tail);
       this.motion((time, state) => {
         const awake = 1 - state.sleep;
-        const wobble = Math.sin(time * 2.5) * 0.045 * awake;
+        const wobble = Math.sin(time * 2.5) * 0.02 * awake;
         duang.scale.set(0.46 * (1 + wobble), 0.44 * (1 - wobble * 0.7), 0.32);
         const cycle = (time % 8.6 + 8.6) % 8.6;
         const duangBeat = cycle > 3.2 && cycle < 5.4 ? Math.sin((cycle - 3.2) / 2.2 * Math.PI) : 0;
@@ -33556,15 +33429,15 @@ void main() {
         flame.visible = awake > 0.4 && duangBeat > 0.45;
         if (flame.visible) {
           flame.scale.setScalar(0.7 + duangBeat * 0.6);
-          flame.rotation.z = Math.sin(time * 18) * 0.18;
+          flame.rotation.z = Math.sin(time * 3.6) * 0.07;
         }
-        model.position.x += Math.sin(time * 1.35) * 0.018 * awake;
+        model.position.x += Math.sin(time * 1.35) * 8e-3 * awake;
         if (this.body) this.body.node.rotation.z += Math.sin(time * 1.2) * 0.022 * awake;
         if (this.head) this.head.node.position.y += duangBeat * 0.025;
         const wave = beatMotion(time, 8.6, 3.2, 5.4);
         for (const limb of this.limbs) {
           if (!limb.front) continue;
-          limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.1 * awake;
+          limb.node.rotation.x += Math.sin(time * 2.6 + limb.phase) * 0.045 * awake;
           limb.node.rotation.z += limb.side * wave * 0.22;
           limb.node.position.y += wave * 0.05;
         }
@@ -33835,7 +33708,7 @@ void main() {
           this.head.node.rotation.x += Math.sin(time * 0.85) * 0.022 * awake + wave * 0.06 + slump * 0.12;
           this.head.node.rotation.z += Math.sin(time * 0.6) * 0.018 * awake - slump * 0.2;
         }
-        looseThread.rotation.z = Math.sin(time * 2.4) * 0.25 * awake + slump * 0.5;
+        looseThread.rotation.z = Math.sin(time * 2.4) * 0.12 * awake + slump * 0.5;
         for (const limb of this.limbs) {
           if (limb.front && limb.side > 0) {
             limb.node.rotation.z += wave * 0.85;
