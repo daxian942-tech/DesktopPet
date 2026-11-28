@@ -145,6 +145,8 @@ export class IndependentSpecies3D {
   private tail: PartRef | null = null;
   private readonly ears: EarRef[] = [];
   private readonly eyes: PartRef[] = [];
+  /** 瞳孔网格引用：用来做呼吸般的缩放，让眼睛一直是"活"的 */
+  private readonly pupils: Array<{ node: THREE.Mesh; base: THREE.Vector3; phase: number }> = [];
   private readonly limbs: LimbRef[] = [];
   private readonly customMotions: MotionFn[] = [];
   private readonly expressionGroups = new Map<FaceExpression, ExpressionSet>();
@@ -267,10 +269,21 @@ export class IndependentSpecies3D {
     for (const eye of this.eyes) {
       eye.node.position.copy(eye.position);
       eye.node.rotation.copy(eye.rotation);
+      // 视线游走：左右缓慢扫视 + 轻微上下，眼睛不会死盯一个点
+      eye.node.rotation.y += Math.sin(time * 0.55 + eye.position.x * 3.1) * 0.055 * awake;
+      eye.node.rotation.x += Math.sin(time * 0.83 + eye.position.x * 2.2) * 0.030 * awake;
       eye.node.scale.set(eye.scale.x, eye.scale.y * Math.max(0.07, 1 - exprBlink * 0.94), eye.scale.z);
       // Only the two eyes an overlay is drawn on get hidden; extra eyes
       // (some species have more than two) keep their normal behaviour.
       eye.node.visible = !(exprSet && this.expressionEyes.includes(eye.node));
+    }
+    // 瞳孔：呼吸般轻微缩放 + 兴奋 / 被摸时放大，眼神一直是"活"的
+    if (this.pupils.length) {
+      const glow = 1 + excited * 0.15 + (options.petting ? 0.07 : 0);
+      for (const pupil of this.pupils) {
+        const s = (1 + Math.sin(time * 1.7 + pupil.phase) * 0.05 * awake) * glow;
+        pupil.node.scale.set(pupil.base.x * s, pupil.base.y * s, pupil.base.z);
+      }
     }
     if (exprSet) {
       const squash = Math.max(0.08, 1 - exprBlink * 0.92);
@@ -558,15 +571,78 @@ export class IndependentSpecies3D {
     parent: THREE.Object3D,
     position: Vec3,
     radius: number,
-    options: { iris?: THREE.Color; pupil?: THREE.Color; aspect?: number; tilt?: number; glint?: boolean } = {},
+    options: {
+      iris?: THREE.Color;
+      pupil?: THREE.Color;
+      aspect?: number;
+      tilt?: number;
+      glint?: boolean;
+      /** 眼型：round 圆眼 / dot 豆豆眼 / sparkle 星星眼 */
+      style?: 'round' | 'dot' | 'sparkle';
+      /** 瞳孔：round 圆瞳 / vertical 竖瞳 / horizontal 横瞳 */
+      pupilShape?: 'round' | 'vertical' | 'horizontal';
+      /** 加一圈眼白，眼球更像嵌在眼眶里 */
+      sclera?: boolean;
+      /** 眼球凸出程度（z 相对半径），越小越贴脸。白眼球物种要压扁，否则像爆眼 */
+      depth?: number;
+      /** 瞳孔相对半径的比例，越大瞳孔越圆润 */
+      pupilScale?: number;
+    } = {},
   ): THREE.Group {
     const p = this.palette!;
     const eye = this.group(parent, position, [0, 0, options.tilt || 0]);
     const aspect = options.aspect ?? 1;
-    this.sphere(eye, this.material(options.iris || p.eye, 0.34), [0, 0, 0], [radius, radius * aspect, radius * 0.34], [0, 0, 0], 20);
-    this.sphere(eye, this.material(options.pupil || p.pupil, 0.26), [0, 0, radius * 0.30], [radius * 0.43, radius * 0.56 * aspect, radius * 0.16], [0, 0, 0], 16);
+    const style = options.style ?? 'round';
+    const irisMat = this.material(options.iris || p.eye, 0.30);
+    const pupilMat = this.material(options.pupil || p.pupil, 0.20);
+    const phase = position[0] < 0 ? 0 : 1.7;
+
+    // 1) 眼白：比虹膜略大的扁椭球垫在后面，像真正嵌在眼眶里的眼珠
+    if (options.sclera) {
+      this.sphere(
+        eye,
+        this.material(WHITE, 0.40),
+        [0, 0, -radius * 0.10],
+        [radius * 1.18, radius * aspect * 1.18, radius * 0.26],
+        [0, 0, 0],
+        20,
+      );
+    }
+
+    // 2) 虹膜：加厚成凸起的眼球，不再是贴在脸上的扁片
+    const depth = options.depth ?? (style === 'dot' ? 0.44 : 0.58);
+    this.sphere(eye, irisMat, [0, 0, radius * 0.08], [radius, radius * aspect, radius * depth], [0, 0, 0], 24);
+
+    // 3) 瞳孔（豆豆眼整颗就是黑豆，不再叠瞳孔）
+    const pupilZ = radius * (depth * 0.60 + 0.05);
+    let pupilMesh: THREE.Mesh | null = null;
+    if (style !== 'dot') {
+      if (options.pupilShape === 'vertical') {
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.24, radius * aspect * 0.76, radius * 0.18], [0, 0, 0], 18);
+      } else if (options.pupilShape === 'horizontal') {
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * 0.76, radius * aspect * 0.28, radius * 0.18], [0, 0, 0], 18);
+      } else {
+        const ps = options.pupilScale ?? (style === 'sparkle' ? 0.56 : 0.52);
+        pupilMesh = this.sphere(eye, pupilMat, [0, 0, pupilZ], [radius * ps, radius * aspect * ps * 1.12, radius * 0.20], [0, 0, 0], 18);
+      }
+      this.pupils.push({ node: pupilMesh, base: pupilMesh.scale.clone(), phase });
+    }
+
+    // 4) 高光：主光 + 次光（星星眼再加四向小星芒）
     if (options.glint ?? p.catchlight) {
-      this.sphere(eye, this.material(WHITE, 0.20), [-radius * 0.18, radius * 0.22 * aspect, radius * 0.45], [radius * 0.13, radius * 0.13, radius * 0.08], [0, 0, 0], 12);
+      const gz = radius * (depth * 0.86 + 0.10);
+      this.sphere(eye, this.material(WHITE, 0.14), [-radius * 0.30, radius * aspect * 0.30, gz], [radius * 0.27, radius * 0.27, radius * 0.13], [0, 0, 0], 14);
+      this.sphere(eye, this.material(WHITE, 0.16), [radius * 0.32, -radius * aspect * 0.28, gz], [radius * 0.13, radius * 0.13, radius * 0.08], [0, 0, 0], 12);
+      if (style === 'sparkle') {
+        for (const [dx, dy, sx, sy] of [
+          [-1, 0, 0.078, 0.030],
+          [1, 0, 0.078, 0.030],
+          [0, 1, 0.030, 0.095],
+          [0, -1, 0.030, 0.095],
+        ] as Array<[number, number, number, number]>) {
+          this.sphere(eye, this.material(WHITE, 0.16), [dx * radius * 0.56, dy * radius * aspect * 0.62, gz * 0.97], [radius * sx, radius * sy, radius * 0.03], [0, 0, 0], 8);
+        }
+      }
     }
     this.eyes.push(this.track(eye));
     return eye;
@@ -1075,7 +1151,7 @@ export class IndependentSpecies3D {
     this.sphere(head, this.material(p.nose, 0.40), [0, -0.12, 0.62], [0.095, 0.065, 0.055], [0, 0, 0], 16);
     this.smile(head, [0, -0.26, 0.54], 0.10, this.material(p.mouth));
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.21, 0.08, 0.47], 0.078);
+      this.eye(head, [side * 0.21, 0.08, 0.44], 0.108, { sclera: true });
       const ear = this.group(head, [side * 0.35, 0.24, -0.04], [0.05, 0, side * 0.18]);
       this.capsule(ear, this.material(p.ear), [0, 0.44, 0], 0.125, 0.42, [1, 1, 0.72], [0, 0, side * 0.10]);
       this.trackEar(ear, side);
@@ -1116,7 +1192,7 @@ export class IndependentSpecies3D {
     this.cone(head, pale, [0, -0.16, 0.44], 0.13, 0.32, [1, 0.70, 1], [Math.PI / 2, 0, 0], 18);
     this.sphere(head, this.material(p.nose, 0.38), [0, -0.14, 0.66], [0.065, 0.05, 0.045], [0, 0, 0], 16);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.20, 0.07, 0.42], 0.075, { aspect: 0.76, tilt: -side * 0.20 });
+      this.eye(head, [side * 0.20, 0.07, 0.40], 0.105, { aspect: 0.80, tilt: -side * 0.22, pupilShape: 'vertical' });
       const ear = this.group(head, [side * 0.27, 0.26, -0.06], [0, 0, -side * 0.14]);
       this.cone(ear, this.material(p.ear), [0, 0.24, 0], 0.185, 0.46, [1, 1, 0.62], [0, 0, 0], 3);
       this.cone(ear, this.material(p.innerEar), [0, 0.21, 0.06], 0.105, 0.30, [1, 1, 0.34], [0, 0, 0], 3);
@@ -1158,7 +1234,7 @@ export class IndependentSpecies3D {
       this.sphere(ear, black, [0, 0, 0], [0.155, 0.155, 0.12], [0, 0, 0], 18);
       this.trackEar(ear, side);
       this.sphere(head, black, [side * 0.20, 0.05, 0.44], [0.13, 0.17, 0.03], [0, 0, -side * 0.26], 20);
-      this.eye(head, [side * 0.20, 0.04, 0.47], 0.055, { iris: WHITE, pupil: p.pupil });
+      this.eye(head, [side * 0.20, 0.04, 0.45], 0.082, { iris: WHITE, pupil: p.pupil, depth: 0.26, pupilScale: 0.84 });
     }
     this.sphere(head, black, [0, -0.12, 0.50], [0.075, 0.055, 0.04], [0, 0, 0], 16);
     this.smile(head, [0, -0.22, 0.48], 0.075, black);
@@ -1190,7 +1266,7 @@ export class IndependentSpecies3D {
     const head = this.group(model, [0, 1.40, 0.02]);
     this.sphere(head, fur, [0, 0, 0], [0.58, 0.54, 0.52]);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.20, 0.04, 0.46], 0.075);
+      this.eye(head, [side * 0.20, 0.04, 0.44], 0.106, { sclera: true });
       const ear = this.group(head, [side * 0.20, 0.32, -0.06], [0.02, 0, -side * 0.08]);
       this.capsule(ear, fur, [0, 0.40, 0], 0.105, 0.72, [1, 1, 0.68]);
       this.capsule(ear, this.material(p.innerEar), [0, 0.41, 0.065], 0.055, 0.54, [1, 1, 0.30]);
@@ -1226,7 +1302,7 @@ export class IndependentSpecies3D {
     this.mesh(body, pear, dark, [0, 1.0, 0], [0.75, 0.95, 0.59]);
     this.sphere(body, white, [0, 0.91, 0.47], [0.49, 0.70, 0.105]);
     for (const side of [-1, 1] as const) {
-      this.eye(body, [side * 0.19, 1.49, 0.49], 0.088, { iris: WHITE, pupil: p.pupil });
+      this.eye(body, [side * 0.19, 1.49, 0.47], 0.115, { iris: WHITE, pupil: p.pupil, depth: 0.34, pupilScale: 0.78 });
     }
     this.cone(body, orange, [0, 1.29, 0.62], 0.12, 0.34, [1, 0.72, 1], [Math.PI / 2, 0, 0], 20);
     this.trackBody(body);
@@ -1277,7 +1353,7 @@ export class IndependentSpecies3D {
     this.smile(head, [0, -0.14, 0.46], 0.34, this.material(p.mouth));
     for (const side of [-1, 1] as const) {
       this.sphere(head, green, [side * 0.38, 0.28, 0.0], [0.24, 0.24, 0.22], [0, 0, 0], 24);
-      this.eye(head, [side * 0.38, 0.30, 0.19], 0.15, { iris: p.eye, pupil: p.pupil, aspect: 1.05 });
+      this.eye(head, [side * 0.38, 0.30, 0.17], 0.165, { iris: p.eye, pupil: p.pupil, aspect: 1.05 });
       this.sphere(head, this.material(tint(p.fur, -0.12)), [side * 0.17, -0.06, 0.46], [0.03, 0.02, 0.016], [0, 0, 0], 12);
     }
     this.blush(head, 0.50, -0.16, 0.34, 0.10);
@@ -1340,7 +1416,7 @@ export class IndependentSpecies3D {
       const ear = this.group(head, [side * 0.38, 0.37, -0.025]);
       this.sphere(ear, fur, [0, 0, 0], [0.135, 0.135, 0.10], [0, 0, 0], 18);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.20, 0.005, 0.44], 0.058, { aspect: 0.92 });
+      this.eye(head, [side * 0.20, 0.005, 0.42], 0.076, { aspect: 0.92, style: 'dot' });
     }
     // Tiny w mouth plus the small dot below it, exactly as in the reference.
     for (const side of [-1, 1] as const) {
@@ -1449,7 +1525,7 @@ export class IndependentSpecies3D {
       this.sphere(ear, earMat, [side * 0.08, 0, 0], [0.20, 0.10, 0.13], [0, 0, side * 0.10], 18);
       this.trackEar(ear, side);
       // 表情包呆滞眼：黑色小豆豆眼 + 平直眉
-      this.eye(head, [side * 0.24, 0.10, 0.45], 0.052, { iris: p.mouth, pupil: BLACK });
+      this.eye(head, [side * 0.24, 0.10, 0.43], 0.088, { iris: p.mouth, pupil: BLACK, sclera: true });
       const brow = this.brow(head, [side * 0.24, 0.24, 0.43], 0.12, 0, patches);
       brow.scale.y = 1.3;
     }
@@ -1541,7 +1617,7 @@ export class IndependentSpecies3D {
     this.sphere(head, fur, [0, 0, 0], [0.62, 0.58, 0.54]);
     const greenIris = new THREE.Color('#57b34a');
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.19, 0.08, 0.47], 0.105, { iris: greenIris, pupil: BLACK, aspect: 1.0 });
+      this.eye(head, [side * 0.19, 0.08, 0.44], 0.132, { iris: greenIris, pupil: BLACK, aspect: 1.0, style: 'sparkle' });
     }
     for (const side of [-1, 1] as const) {
       this.sphere(head, ink, [side * 0.05, -0.16, 0.53], [0.018, 0.014, 0.012], [0, 0, 0], 10);
@@ -1626,7 +1702,7 @@ export class IndependentSpecies3D {
     this.sphere(head, muzzleMat, [0, -0.12, 0.30], [0.30, 0.20, 0.24], [0, 0, 0], 24);
     this.sphere(head, ink, [0, 0.02, 0.50], [0.08, 0.05, 0.03], [0, 0, 0], 14);
     for (const side of [-1, 1] as const) {
-      this.eye(head, [side * 0.23, 0.14, 0.41], 0.042, { iris: BLACK, pupil: BLACK });
+      this.eye(head, [side * 0.23, 0.14, 0.39], 0.076, { iris: BLACK, pupil: BLACK, style: 'dot', sclera: true });
       const ear = this.group(head, [side * 0.34, 0.30, -0.02]);
       this.sphere(ear, dark, [0, 0, 0], [0.09, 0.10, 0.07], [0, 0, 0], 16);
       this.trackEar(ear, side);
@@ -1710,7 +1786,7 @@ export class IndependentSpecies3D {
       this.sphere(ear, fur, [0, 0, 0], [0.14, 0.15, 0.11], [0, 0, 0], 18);
       this.sphere(ear, this.material(new THREE.Color('#f7d9df')), [0, 0, 0.075], [0.06, 0.065, 0.02], [0, 0, 0], 14);
       this.trackEar(ear, side);
-      this.eye(head, [side * 0.20, 0.04, 0.45], 0.078, { iris: BLACK, pupil: BLACK, aspect: 1.05 });
+      this.eye(head, [side * 0.20, 0.04, 0.43], 0.106, { iris: BLACK, pupil: BLACK, aspect: 1.05, style: 'dot', sclera: true });
     }
     // Big purple oval nose and open smile with two teeth.
     this.sphere(head, this.material(new THREE.Color('#6d1d53'), 0.42), [0, -0.10, 0.47], [0.095, 0.075, 0.045], [0, 0, 0], 22);
@@ -1829,8 +1905,8 @@ export class IndependentSpecies3D {
       // Mismatched button eyes: one higher, one lower, neither one blinks.
       const buttonMat = this.material(new THREE.Color(side < 0 ? '#3a2a22' : '#4a3529'), 0.55);
       const by = side < 0 ? 0.085 : 0.015;
-      this.proto(head, 'button_eye', buttonMat, [side * 0.19, by, 0.46], side < 0 ? [1.0, 1.0, 1.0] : [0.82, 0.82, 1.0]);
-      this.sphere(head, this.material(new THREE.Color('#d8c9b0')), [side * 0.19 - 0.02, by + 0.02, 0.485], [0.014, 0.014, 0.008], [0, 0, 0], 10);
+      this.proto(head, 'button_eye', buttonMat, [side * 0.19, by, 0.46], side < 0 ? [1.36, 1.36, 1.36] : [1.12, 1.12, 1.36]);
+      this.sphere(head, this.material(new THREE.Color('#d8c9b0')), [side * 0.19 - 0.026, by + 0.026, 0.492], [0.019, 0.019, 0.010], [0, 0, 0], 10);
       this.sphere(head, blushMat, [side * 0.34, -0.12, 0.38], [0.105, 0.07, 0.024], [0, 0, 0], 16);
       for (let i = 0; i < 2; i++) {
         this.tube(head, this.material(new THREE.Color('#c9864f')), [
@@ -1910,6 +1986,7 @@ export class IndependentSpecies3D {
     this.tail = null;
     this.ears.length = 0;
     this.eyes.length = 0;
+    this.pupils.length = 0;
     this.limbs.length = 0;
     this.customMotions.length = 0;
     this.expressionGroups.clear();
