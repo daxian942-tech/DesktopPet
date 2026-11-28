@@ -12,7 +12,7 @@
 
 ## 页面截图（真图证据）
 - `pages/gh-repo.png` — https://github.com/daxian942-tech/DesktopPet （Playwright + 系统 Chrome 实拍，2026-11-27）
-- `pages/gh-release.png` — https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.2 （同上）
+- `pages/gh-release.png` — https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.3 （同上）
 - 用于 s02 / s11 / s13
 
 ## 开源项目背景（口播事实来源）

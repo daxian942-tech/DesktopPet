@@ -10,7 +10,7 @@ CHROME = r"C:/Program Files/Google/Chrome/Application/chrome.exe"
 
 PAGES = [
     ("gh-repo.png", "https://github.com/daxian942-tech/DesktopPet", 1100),
-    ("gh-release.png", "https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.2", 1000),
+    ("gh-release.png", "https://github.com/daxian942-tech/DesktopPet/releases/tag/v1.0.3", 1000),
 ]
 
 

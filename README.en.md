@@ -6,7 +6,7 @@
   </p>
   <p><img src="交付产物/造型验收-3D重绘.png" alt="3D models" width="640" /></p>
   <p>
-    <img src="https://img.shields.io/badge/version-1.0.2-orange?style=flat-square" alt="Version 1.0.2" />
+    <img src="https://img.shields.io/badge/version-1.0.3-orange?style=flat-square" alt="Version 1.0.3" />
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License" />
     <img src="https://img.shields.io/badge/Stack-Tauri%20v2%20%7C%20Rust%20%7C%20Three.js-818cf8?style=flat-square" alt="Tech Stack" />
   </p>
@@ -16,7 +16,7 @@
 
 DesktopPet stays on your desktop, reacts to your keyboard and mouse, lets you switch between 13 independently modelled animals, and needs regular care — feed it, give it water, play, or give it a bath. It reminds you when a need becomes urgent, with a one-click action. An MCP server is built in so AI agents can craft custom pets for you.
 
-This is a community fork of [qianyiai/KuroCat](https://github.com/qianyiai/KuroCat) (MIT). It reworks the species modelling system, visual branding, keyboard themes and care gameplay into an independent product, currently at `1.0.2`. The original MIT copyright notice is preserved in [`LICENSE`](./LICENSE).
+This is a community fork of [qianyiai/KuroCat](https://github.com/qianyiai/KuroCat) (MIT). It reworks the species modelling system, visual branding, keyboard themes and care gameplay into an independent product, currently at `1.0.3`. The original MIT copyright notice is preserved in [`LICENSE`](./LICENSE).
 
 > ⚠️ This is **not** an official KuroCat release and is not affiliated with `kurocat.org` or the original author.
 

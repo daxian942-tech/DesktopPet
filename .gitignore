@@ -56,3 +56,7 @@ _update_shots/
 宣传视频/remotion/src/assets.ts
 交付产物/DesktopPet-抖音宣传视频.mp4
 交付产物/动物叫声试听集.wav
+
+# DesktopPet: 离线发布 bundle 与快捷栏验收临时目录（不入库）
+交付产物/*.bundle
+_care_quickbar/
