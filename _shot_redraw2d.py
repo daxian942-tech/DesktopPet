@@ -1,10 +1,16 @@
-"""Headless 2D acceptance sheet. Uses system Chrome directly (no playwright)."""
+"""Headless 2D acceptance sheet. Uses system Chrome directly (no playwright).
+
+默认：12 只待机收手态（reach=0）。
+加 --typing：12 只打字伸手态（reach=1、typing=1）。
+"""
 from pathlib import Path
 from PIL import Image, ImageDraw
 import subprocess
+import sys
 
 root = Path(r"C:/Users/23248/WorkBuddy/spaces/2026_11_27_10-33-55/KuroCat")
-out = root / "_redraw2d"
+typing = "--typing" in sys.argv
+out = root / ("_redraw2d_typing" if typing else "_redraw2d")
 out.mkdir(exist_ok=True)
 keys = ["shiba", "fox", "panda", "bunny", "penguin", "frog", "chiikawa", "grasscow", "milkdragon", "capybara", "loopy", "bubu"]
 
@@ -16,7 +22,7 @@ for key in keys:
         "--window-size=720,720",
         "--screenshot=" + str(out / f"{key}.png"),
         "--virtual-time-budget=3500",
-        base + "?shot=" + key,
+        base + "?shot=" + key + ("&t=2&typing=1&reach=1" if typing else "&t=2"),
     ], check=True, capture_output=True)
 
 thumb = 320
@@ -33,5 +39,6 @@ for i, key in enumerate(keys):
     y = (i // 4) * (thumb + label_h)
     sheet.paste(bg, (x + (thumb - bg.width) // 2, y + (thumb - bg.height) // 2))
     draw.text((x + 12, y + thumb + 8), key, fill="#ffffff")
-sheet.save(root / "_redraw2d.png")
-print(root / "_redraw2d.png")
+target = root / ("_redraw2d_typing.png" if typing else "_redraw2d.png")
+sheet.save(target)
+print(target)

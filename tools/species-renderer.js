@@ -49,8 +49,8 @@
       bodyChubbiness: numOr(raw?.bodyChubbiness, 0.8, 1.25, 1)
     };
   }
-  function parseHexLuminance(hex) {
-    const m = hex.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  function parseHexLuminance(hex2) {
+    const m = hex2.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
     if (!m) return 0.5;
     let h = m[1];
     if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
@@ -59,8 +59,8 @@
     const b = parseInt(h.slice(4, 6), 16) / 255;
     return 0.299 * r + 0.587 * g + 0.114 * b;
   }
-  function isLightColor(hex) {
-    return parseHexLuminance(hex) > 0.48;
+  function isLightColor(hex2) {
+    return parseHexLuminance(hex2) > 0.48;
   }
   function resolveCustomSkin(raw) {
     const fur = raw.furColor || "#f2a452";
@@ -177,7 +177,572 @@
     }
   }
 
+  // src/chibi2d.ts
+  function hex(c, fallback) {
+    if (!c) return fallback;
+    const v = String(c).trim();
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)) return v;
+    if (/^rgba?\(/i.test(v)) return v;
+    return fallback;
+  }
+  function shift(c, amt) {
+    const m = c.match(/^#([0-9a-f]{6})$/i);
+    if (!m) return c;
+    const h = m[1];
+    const ch = (i) => Math.max(0, Math.min(255, parseInt(h.slice(i, i + 2), 16) + amt));
+    return `rgb(${ch(0)},${ch(2)},${ch(4)})`;
+  }
+  function fillEllipse(ctx, x, y, rx, ry, color, rot = 0) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), rot, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  function fillSoftEdge(ctx, x, y, rx, ry, color) {
+    fillEllipse(ctx, x, y, rx + 3.5, ry + 3.5, shift(color, -12));
+    fillEllipse(ctx, x, y, rx, ry, color);
+  }
+  function fillPoly(ctx, pts, color) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  function roundLine(ctx, color, w, pts) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function curve(ctx, color, w, draw) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    draw();
+    ctx.stroke();
+    ctx.restore();
+  }
+  function chibiEye(p, x, y, rx, ry, iris, sclera, pupilScale = 0.5) {
+    const { ctx, ink } = p;
+    if (p.blink > 0.45 || p.squint > 0.55) {
+      curve(ctx, ink, Math.max(5, rx * 0.28), () => {
+        ctx.moveTo(x - rx, y);
+        ctx.quadraticCurveTo(x, y + ry * 0.75, x + rx, y);
+      });
+      return;
+    }
+    if (p.expression === "happy") {
+      curve(ctx, ink, Math.max(5, rx * 0.3), () => {
+        ctx.moveTo(x - rx, y + ry * 0.18);
+        ctx.quadraticCurveTo(x, y - ry * 1.15, x + rx, y + ry * 0.18);
+      });
+      return;
+    }
+    if (p.expression === "love") {
+      const r = Math.max(rx, ry) * 0.95;
+      ctx.beginPath();
+      ctx.moveTo(x, y + r * 0.9);
+      ctx.bezierCurveTo(x - r * 1.5, y - r * 0.15, x - r * 0.7, y - r * 1.3, x, y - r * 0.42);
+      ctx.bezierCurveTo(x + r * 0.7, y - r * 1.3, x + r * 1.5, y - r * 0.15, x, y + r * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = "#e56f7f";
+      ctx.fill();
+      return;
+    }
+    if (p.expression === "surprised") {
+      fillEllipse(ctx, x, y, rx * 1.18, ry * 1.24, sclera ? "#ffffff" : iris);
+      fillEllipse(ctx, x, y, rx, ry, iris);
+      fillEllipse(ctx, x, y, rx * pupilScale, ry * pupilScale * 1.12, ink);
+      fillEllipse(ctx, x - rx * 0.3, y - ry * 0.32, rx * 0.32, ry * 0.32, "#ffffff");
+      return;
+    }
+    if (sclera) fillEllipse(ctx, x, y, rx * 1.24, ry * 1.24, "#ffffff");
+    fillEllipse(ctx, x, y, rx, ry, iris);
+    fillEllipse(ctx, x, y, rx * pupilScale, ry * pupilScale * 1.12, ink);
+    if (p.s.eyeCatchlight !== false) {
+      fillEllipse(ctx, x - rx * 0.3, y - ry * 0.32, rx * 0.31, ry * 0.31, "#ffffff");
+      fillEllipse(ctx, x + rx * 0.34, y + ry * 0.3, rx * 0.15, ry * 0.15, "#ffffff");
+    }
+    if (p.expression === "worried") {
+      const side = x < 0 ? -1 : 1;
+      roundLine(ctx, ink, Math.max(4, rx * 0.24), [[x + side * rx, y - ry * 0.7], [x - side * rx * 0.85, y - ry * 1.1]]);
+    }
+  }
+  function chibiMouth(p, y, w, grin = true, arc = 0.34) {
+    curve(p.ctx, p.ink, Math.max(4, w * 0.14), () => {
+      p.ctx.moveTo(-w, y);
+      p.ctx.quadraticCurveTo(0, y + (grin ? w * arc : 3), w, y);
+    });
+  }
+  function drawLegs(p, cfg) {
+    const { ctx } = p;
+    const lx = cfg.legX ?? 60;
+    const ly = cfg.legY ?? 248;
+    const lr = cfg.legR ?? 46;
+    [-1, 1].forEach((side) => {
+      const x = side * lx;
+      roundLine(ctx, cfg.bodyColor || p.secondary, lr * 1.15, [[x, ly - 24], [x, ly + 46]]);
+      fillEllipse(ctx, x, ly + 46, lr * 0.86, lr * 0.44, cfg.pawColor || cfg.bodyColor || p.secondary);
+      if (cfg.footClaw) {
+        for (let i = -1; i <= 1; i++) {
+          fillEllipse(ctx, x + i * lr * 0.4, ly + 46 + lr * 0.24, lr * 0.13, lr * 0.13, cfg.footClaw);
+        }
+      }
+    });
+  }
+  function drawArms(p, cfg) {
+    const { ctx } = p;
+    const reach = Math.max(0, Math.min(1, p.reach));
+    const ax = cfg.armX ?? 96;
+    const ay = cfg.armY ?? 92;
+    const aw = cfg.armR ?? 30;
+    const body = cfg.bodyColor || p.secondary;
+    [-1, 1].forEach((side) => {
+      const sx = side * ax;
+      const sy = ay;
+      const restX = side * (cfg.hug ? 26 : 50);
+      const restY = ay + (cfg.hug ? 46 : 92);
+      const typeX = side * (ax + 18);
+      const typeY = 282;
+      const px = restX + (typeX - restX) * reach;
+      let py = restY + (typeY - restY) * reach;
+      const tap = (side < 0 ? p.tapLeft : p.tapRight) * reach * 15;
+      py -= tap;
+      roundLine(ctx, body, aw * 1.05, [[sx, sy], [(sx + px) / 2, (sy + py) / 2 + 16], [px, py]]);
+      fillEllipse(ctx, px, py, aw * 0.82, aw * 0.68, cfg.pawColor || body);
+      if (cfg.claw) {
+        for (let i = -1; i <= 1; i++) {
+          fillEllipse(ctx, px + i * aw * 0.44, py + aw * 0.42, aw * 0.15, aw * 0.16, cfg.claw);
+        }
+      }
+    });
+  }
+  function drawChibi(p, cfg) {
+    const { ctx } = p;
+    const headColor = cfg.headColor || p.fur;
+    const bodyColor = cfg.bodyColor || p.secondary;
+    if (cfg.tail) cfg.tail(p);
+    drawLegs(p, cfg);
+    fillSoftEdge(ctx, 0, cfg.bodyY, cfg.bodyRx, cfg.bodyRy, bodyColor);
+    if (cfg.bellyColor) {
+      ctx.save();
+      const wob = 1 + Math.sin(p.t * 2.5) * 0.012;
+      ctx.translate(0, cfg.bellyY ?? cfg.bodyY + 20);
+      ctx.scale(wob, 2 - wob);
+      fillEllipse(ctx, 0, 0, cfg.bellyRx ?? cfg.bodyRx * 0.66, cfg.bellyRy ?? cfg.bodyRy * 0.74, cfg.bellyColor);
+      ctx.restore();
+    }
+    drawArms(p, cfg);
+    ctx.save();
+    ctx.translate(0, 26);
+    if (cfg.ears) cfg.ears(p);
+    fillSoftEdge(ctx, 0, cfg.headY, cfg.headRx, cfg.headRy, headColor);
+    if (cfg.markings) cfg.markings(p);
+    if (cfg.crown) cfg.crown(p);
+    if (cfg.blush) {
+      [-1, 1].forEach((side) => fillEllipse(ctx, side * cfg.eyeX * 1.45, cfg.eyeY + cfg.eyeRy * 1.55, cfg.eyeRx * 0.66, cfg.eyeRy * 0.3, cfg.blush));
+    }
+    [-1, 1].forEach((side) => chibiEye(
+      p,
+      side * cfg.eyeX,
+      cfg.eyeY,
+      cfg.eyeRx,
+      cfg.eyeRy,
+      cfg.iris || p.s.eyeColorTop || "#2c2a30",
+      cfg.sclera ?? false,
+      cfg.pupil ?? 0.5
+    ));
+    if (cfg.face) cfg.face(p);
+    chibiMouth(p, cfg.mouthY ?? cfg.eyeY + cfg.eyeRy * 2.05, cfg.mouthW ?? cfg.eyeRx * 1.1, true, cfg.smileCurve ?? 0.34);
+    ctx.restore();
+  }
+  function configFor(p, species) {
+    const s = p.s;
+    const fur = p.fur;
+    const pale = s.bellyBibColor || "#fff3e0";
+    const ink = p.ink;
+    switch (species) {
+      case "cat":
+        return {
+          headRx: 138,
+          headRy: 126,
+          headY: -96,
+          bodyRx: 104,
+          bodyRy: 108,
+          bodyY: 132,
+          bellyColor: pale,
+          eyeX: 48,
+          eyeY: -100,
+          eyeRx: 26,
+          eyeRy: 30,
+          iris: s.eyeColorTop || "#c8e64a",
+          pupil: 0.34,
+          ears: (q) => [-1, 1].forEach((side) => fillPoly(q.ctx, [
+            [side * 54, -182],
+            [side * 112, -182],
+            [side * 82, -268]
+          ], fur)),
+          tail: (q) => curve(q.ctx, fur, 34, () => {
+            q.ctx.moveTo(96, 190);
+            q.ctx.quadraticCurveTo(210, 150, 178, 30);
+          }),
+          face: (q) => {
+            fillPoly(q.ctx, [[-12, -44], [12, -44], [0, -28]], q.s.noseColor || "#e08f9c");
+          }
+        };
+      case "dog":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 142,
+          headRy: 130,
+          headY: -94,
+          bodyRx: 112,
+          bodyRy: 106,
+          bodyY: 134,
+          bellyColor: pale,
+          eyeX: 50,
+          eyeY: -100,
+          eyeRx: 26,
+          eyeRy: 30,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 118, -104, 38, 82, q.s.earOuterColor || q.secondary, side * 0.22)),
+          tail: (q) => curve(q.ctx, q.secondary, 30, () => {
+            q.ctx.moveTo(100, 176);
+            q.ctx.quadraticCurveTo(196, 136, 168, 62);
+          }),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -38, 46, 36, pale);
+            fillEllipse(q.ctx, 0, -52, 20, 14, q.s.noseColor || "#2b211d");
+            fillEllipse(q.ctx, 0, -14, 15, 20, "#ef8e9e");
+          }
+        };
+      case "fox":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 136,
+          headRy: 118,
+          headY: -98,
+          bodyRx: 108,
+          bodyRy: 100,
+          bodyY: 140,
+          bellyColor: pale,
+          eyeX: 48,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 27,
+          iris: s.eyeColorTop || "#d8a23c",
+          pupil: 0.28,
+          ears: (q) => [-1, 1].forEach((side) => fillPoly(q.ctx, [
+            [side * 52, -172],
+            [side * 122, -186],
+            [side * 90, -272]
+          ], fur)),
+          tail: (q) => {
+            q.ctx.save();
+            q.ctx.translate(112, 168);
+            q.ctx.rotate(0.35);
+            fillEllipse(q.ctx, 62, 0, 92, 46, fur);
+            fillEllipse(q.ctx, 136, -8, 34, 30, "#fff5e6");
+            q.ctx.restore();
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -34, 40, 25, pale)
+        };
+      case "panda":
+        return {
+          headRx: 142,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 112,
+          bodyRy: 110,
+          bodyY: 132,
+          eyeX: 52,
+          eyeY: -104,
+          eyeRx: 27,
+          eyeRy: 31,
+          pupil: 0.44,
+          sclera: true,
+          iris: "#3c3c44",
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 104, -192, 40, 42, "#202024")),
+          markings: (q) => {
+            [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 52, -104, 36, 38, "#202024"));
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -40, 15, 11, "#202024")
+        };
+      case "bunny":
+        return {
+          headRx: 132,
+          headRy: 126,
+          headY: -100,
+          bodyRx: 100,
+          bodyRy: 108,
+          bodyY: 136,
+          bellyColor: pale,
+          eyeX: 46,
+          eyeY: -106,
+          eyeRx: 24,
+          eyeRy: 28,
+          iris: "#8a6a67",
+          pupil: 0.48,
+          ears: (q) => [-1, 1].forEach((side) => {
+            fillEllipse(q.ctx, side * 52, -264, 25, 92, fur, side * 0.1);
+            fillEllipse(q.ctx, side * 52, -264, 11, 72, "#f3b8c4", side * 0.1);
+          }),
+          tail: (q) => fillEllipse(q.ctx, 92, 196, 32, 32, "#fffaf4"),
+          blush: "#f3b8c4",
+          face: (q) => fillEllipse(q.ctx, 0, -42, 11, 8, "#d98a9a")
+        };
+      case "penguin":
+        return {
+          headRx: 130,
+          headRy: 122,
+          headY: -96,
+          bodyRx: 104,
+          bodyRy: 120,
+          bodyY: 136,
+          bellyColor: "#ffffff",
+          bellyRx: 70,
+          bellyRy: 100,
+          bellyY: 146,
+          eyeX: 46,
+          eyeY: -104,
+          eyeRx: 23,
+          eyeRy: 26,
+          pupil: 0.5,
+          face: (q) => fillPoly(q.ctx, [[-22, -48], [22, -48], [0, -16]], "#f5a623"),
+          pawColor: "#f5a623"
+        };
+      case "frog":
+        return {
+          headRx: 150,
+          headRy: 112,
+          headY: -92,
+          bodyRx: 116,
+          bodyRy: 100,
+          bodyY: 140,
+          bellyColor: "#c9e89b",
+          bellyRx: 74,
+          bellyRy: 72,
+          eyeX: 62,
+          eyeY: -156,
+          eyeRx: 30,
+          eyeRy: 32,
+          iris: "#f5f5e8",
+          pupil: 0.34,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 62, -156, 37, 39, fur)),
+          blush: "#f3a8b6",
+          face: (q) => {
+            curve(q.ctx, "#3d7a35", 4, () => {
+              q.ctx.moveTo(-34, -52);
+              q.ctx.quadraticCurveTo(0, -38, 34, -52);
+            });
+          }
+        };
+      case "chiikawa":
+        return {
+          headRx: 140,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 98,
+          bodyRy: 100,
+          bodyY: 136,
+          eyeX: 44,
+          eyeY: -100,
+          eyeRx: 16,
+          eyeRy: 18,
+          iris: "#2c2a30",
+          pupil: 0.62,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 100, -178, 24, 25, fur)),
+          blush: "#f6b8c4",
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -46, 9, 6, "#c48f9a");
+            q.ctx.fillStyle = "#c48f9a";
+            q.ctx.font = "bold 14px sans-serif";
+            q.ctx.fillText("\u03C9", -8, -30);
+          }
+        };
+      case "grasscow":
+        return {
+          bodyColor: "#ffffff",
+          headColor: "#ffffff",
+          headRx: 140,
+          headRy: 120,
+          headY: -94,
+          bodyRx: 116,
+          bodyRy: 104,
+          bodyY: 138,
+          eyeX: 50,
+          eyeY: -104,
+          eyeRx: 24,
+          eyeRy: 27,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => {
+            fillEllipse(q.ctx, side * 130, -136, 34, 22, "#2c2c30", side * 0.3);
+            fillEllipse(q.ctx, side * 84, -196, 16, 24, "#e8d6a8");
+          }),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -38, 46, 34, "#f2a9b8");
+            [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 17, -42, 7, 6, "#b86c7c"));
+            fillEllipse(q.ctx, 0, -186, 34, 24, "#2c2c30");
+          }
+        };
+      case "milkdragon":
+        return {
+          // 按用户参考图：亮黄宽圆头 + 橙色身体 + 白圈墨绿眼 + 粉白大肚皮 + 抱胸臂
+          headColor: s.furColor || "#ffc233",
+          bodyColor: s.furSecondaryColor || "#f5a623",
+          headRx: 168,
+          headRy: 138,
+          headY: -100,
+          bodyRx: 112,
+          bodyRy: 104,
+          bodyY: 142,
+          bellyColor: "#fff1ef",
+          bellyRx: 80,
+          bellyRy: 88,
+          bellyY: 158,
+          eyeX: 60,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 28,
+          iris: "#2f6b46",
+          sclera: true,
+          pupil: 0.54,
+          armX: 106,
+          armY: 78,
+          armR: 34,
+          hug: true,
+          pawColor: s.furSecondaryColor || "#f5a623",
+          claw: "#8a7466",
+          legX: 62,
+          legY: 258,
+          legR: 48,
+          footClaw: "#8a7466",
+          mouthY: -22,
+          mouthW: 30,
+          smileCurve: 0.62
+          // 参考图胸前的小灰褐爪尖由 drawArms 的 claw 画在掌上，不再在脸上叠一排点
+        };
+      case "capybara":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 138,
+          headRy: 118,
+          headY: -92,
+          bodyRx: 116,
+          bodyRy: 104,
+          bodyY: 140,
+          bellyColor: pale,
+          eyeX: 50,
+          eyeY: -100,
+          eyeRx: 23,
+          eyeRy: 25,
+          pupil: 0.48,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 112, -168, 26, 26, fur)),
+          crown: (q) => {
+            fillEllipse(q.ctx, 0, -238, 30, 28, "#f28c28");
+            fillEllipse(q.ctx, 4, -258, 9, 16, "#6fa84a");
+          },
+          face: (q) => fillEllipse(q.ctx, 0, -34, 34, 26, "#f2a94a")
+        };
+      case "loopy":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 142,
+          headRy: 128,
+          headY: -96,
+          bodyRx: 102,
+          bodyRy: 106,
+          bodyY: 138,
+          bellyColor: "#ffd3e0",
+          bellyRx: 68,
+          bellyRy: 80,
+          eyeX: 48,
+          eyeY: -104,
+          eyeRx: 25,
+          eyeRy: 29,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 116, -172, 30, 32, q.secondary)),
+          crown: (q) => fillPoly(q.ctx, [[-38, -212], [0, -188], [-38, -164]], "#7fc4e8"),
+          face: (q) => {
+            fillEllipse(q.ctx, 0, -26, 18, 12, "#ffffff");
+            q.ctx.fillStyle = "#c9527a";
+            q.ctx.fillRect(-6, -34, 12, 12);
+          },
+          blush: "#f49ab6"
+        };
+      case "bubu":
+        return {
+          bodyColor: p.secondary,
+          headColor: fur,
+          headRx: 138,
+          headRy: 124,
+          headY: -96,
+          bodyRx: 106,
+          bodyRy: 106,
+          bodyY: 138,
+          bellyColor: "#e9cba8",
+          bellyRx: 66,
+          bellyRy: 76,
+          eyeX: 48,
+          eyeY: -102,
+          eyeRx: 25,
+          eyeRy: 26,
+          pupil: 0.46,
+          ears: (q) => [-1, 1].forEach((side) => fillEllipse(q.ctx, side * 104, -182, 32, 34, q.secondary)),
+          crown: (q) => {
+            curve(q.ctx, "#7a5844", 3.5, () => {
+              q.ctx.moveTo(22, -214);
+              q.ctx.lineTo(30, -178);
+              q.ctx.lineTo(20, -150);
+            });
+          },
+          face: (q) => {
+            fillPoly(q.ctx, [[-42, -8], [0, 16], [42, -8], [0, 4]], "#f0b429");
+            fillEllipse(q.ctx, 0, -36, 12, 9, "#4a3528");
+          }
+        };
+    }
+  }
+  function drawChibiSpecies(ctx, skin, species, t, expression, blink, squint, tapLeft, tapRight, reach) {
+    const s = skin;
+    const fur = hex(s.furColor, "#f4ece6");
+    const p = {
+      ctx,
+      s,
+      fur,
+      secondary: hex(s.furSecondaryColor || s.armColor, shift(fur, -18)),
+      belly: hex(s.bellyBibColor || s.muzzleColor, "#fff3e0"),
+      ink: hex(s.mouthColor, "#3a302c"),
+      t,
+      expression,
+      blink,
+      squint,
+      tapLeft,
+      tapRight,
+      reach
+    };
+    drawChibi(p, configFor(p, species));
+  }
+
   // src/speciesRenderer2d.ts
+  var chibiReach = 0;
+  var chibiLastTyping = -100;
+  var chibiPrevTime = 0;
+  var chibiTimeInit = false;
   function pickExpression2d(t, mood, moodAmt, sleep) {
     if (sleep > 0.5) return "idle";
     if (moodAmt > 0.02 && (mood === "happy" || mood === "eat" || mood === "drink" || mood === "play" || mood === "bath")) {
@@ -188,16 +753,6 @@
     if (within > 4.6) return ["happy", "love", "surprised", "worried"][slice];
     return "idle";
   }
-  function beat(t, period, start, end) {
-    const c = (t % period + period) % period;
-    if (c <= start || c >= end) return 0;
-    const x = (c - start) / (end - start);
-    const s = Math.sin(Math.PI * x);
-    return s * s;
-  }
-  function followBeat2d(t, period, start, end, lag) {
-    return beat(t - lag, period, start, end);
-  }
   function normHex(c, fallback = "#cccccc") {
     if (!c) return fallback;
     const v = String(c).trim();
@@ -206,9 +761,9 @@
     if (/^#[0-9a-f]{6}$/i.test(v) || /^rgba?\(/i.test(v)) return v;
     return fallback;
   }
-  function shade(hex, amt) {
-    const rgb = normHex(hex).match(/^#([0-9a-f]{6})$/i);
-    if (!rgb) return hex;
+  function shade(hex2, amt) {
+    const rgb = normHex(hex2).match(/^#([0-9a-f]{6})$/i);
+    if (!rgb) return hex2;
     const h = rgb[1];
     const channel = (i) => Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i + 2), 16) + amt)));
     return `rgb(${channel(0)},${channel(2)},${channel(4)})`;
@@ -247,55 +802,6 @@
     ctx.beginPath();
     draw();
     ctx.stroke();
-    ctx.restore();
-  }
-  function limb(ctx, x, y, bend, foot, color, outline, width) {
-    strokePath(ctx, outline, width + 8, () => {
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + bend, y + 48, foot, 342);
-    });
-    strokePath(ctx, color, width, () => {
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + bend, y + 48, foot, 342);
-    });
-  }
-  function softLimb2d(ctx, x, y, opts) {
-    const { width: w, fur, outline, side } = opts;
-    const tap = Math.max(0, Math.min(1, opts.tap ?? 0));
-    const upperLen = opts.length * 0.56;
-    const lowerLen = opts.length * 0.44;
-    const lowerW = w * 0.82;
-    ctx.save();
-    ctx.translate(x, y - tap * 16);
-    ctx.rotate(opts.shoulder - side * tap * 0.26);
-    blob(ctx, 0, 0, w * 0.62, w * 0.62, fur, outline, 4);
-    strokePath(ctx, outline, w + 9, () => {
-      ctx.moveTo(0, 0);
-      ctx.lineTo(side * w * 0.12, upperLen);
-    });
-    strokePath(ctx, fur, w, () => {
-      ctx.moveTo(0, 0);
-      ctx.lineTo(side * w * 0.12, upperLen);
-    });
-    ctx.translate(side * w * 0.12, upperLen);
-    ctx.rotate(opts.elbow + side * tap * 0.34);
-    blob(ctx, 0, 0, lowerW * 0.6, lowerW * 0.6, fur, outline, 3.5);
-    strokePath(ctx, outline, lowerW + 8, () => {
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, lowerLen);
-    });
-    strokePath(ctx, fur, lowerW, () => {
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, lowerLen);
-    });
-    ctx.translate(0, lowerLen);
-    blob(ctx, 0, opts.pawRy * 0.28, opts.pawRx, opts.pawRy, opts.pawColor, outline, 3.5);
-    if (opts.clawColor && opts.clawCount) {
-      for (let i = 0; i < opts.clawCount; i++) {
-        const dx = (i - (opts.clawCount - 1) / 2) * (opts.pawRx * 0.72);
-        blob(ctx, dx, opts.pawRy * 0.62, opts.pawRx * 0.2, opts.pawRy * 0.24, opts.clawColor);
-      }
-    }
     ctx.restore();
   }
   function drawHeart(ctx, x, y, r, color) {
@@ -354,12 +860,6 @@
       P.ctx.quadraticCurveTo(x, y + (smile ? 22 : 3), x + w, y);
     });
   }
-  function mouthArc(P, x, y, w, cornerY, depth = 14) {
-    strokePath(P.ctx, P.s.mouthColor || P.outline, 4, () => {
-      P.ctx.moveTo(x - w, y + cornerY);
-      P.ctx.quadraticCurveTo(x, y + depth, x + w, y + cornerY);
-    });
-  }
   function drawCat(P) {
     const { ctx, cx, cy, s, fur, outline } = P;
     const hw = s.contour.headWidth * 150;
@@ -379,577 +879,34 @@
     if (s.noseColor) poly(ctx, [[cx - 14, hy + 80], [cx + 14, hy + 80], [cx, hy + 98]], s.noseColor);
     mouth(P, cx, hy + 118, 28);
   }
-  function drawDog(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const cream = s.bellyBibColor || "#f6e8d2";
-    const ear = s.earOuterColor || shade(fur, -30);
-    strokePath(ctx, outline, 45, () => {
-      ctx.moveTo(cx + 155, cy + 185);
-      ctx.quadraticCurveTo(cx + 265, cy + 115, cx + 220, cy + 20);
-    });
-    strokePath(ctx, fur, 35, () => {
-      ctx.moveTo(cx + 155, cy + 185);
-      ctx.quadraticCurveTo(cx + 265, cy + 115, cx + 220, cy + 20);
-    });
-    [-90, -25, 85, 145].forEach((x, i) => limb(ctx, cx + x, cy + 205, i % 2 ? -8 : 8, cx + x + (i < 2 ? -8 : 8), i < 2 ? cream : fur, outline, 38));
-    blob(ctx, cx + 30, cy + 180, 190, 105, fur, outline, 6, -0.04);
-    blob(ctx, cx - 48, cy + 205, 65, 82, cream, void 0, 5, -0.25);
-    blob(ctx, cx - 122, cy + 25, 124, 112, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      const ex = cx - 122 + side * 105;
-      blob(ctx, ex, cy + 40, 42, 98, ear, outline, 5, side * 0.24);
-    });
-    blob(ctx, cx - 122, cy + 83, 70, 52, cream, outline, 4);
-    blob(ctx, cx - 122, cy + 52, 29, 20, s.noseColor || "#26211f");
-    [-1, 1].forEach((side) => P.eye(cx - 122 + side * 52, cy + 5, 20, 25, s.eyeColorTop));
-    mouth(P, cx - 122, cy + 91, 34);
-    blob(ctx, cx - 122, cy + 119, 18, 25, "#ef8e9e");
-  }
-  function drawFox(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const pale = s.bellyBibColor || "#fdf6e8";
-    const dark = s.earTipColor || "#3a261c";
-    ctx.save();
-    ctx.translate(cx + 170, cy + 160);
-    ctx.rotate(-0.3);
-    blob(ctx, 85, 0, 155, 82, fur, outline, 6);
-    poly(ctx, [[170, -60], [245, -5], [175, 52], [195, 0]], pale, outline, 4);
-    ctx.restore();
-    [-95, -35, 80, 140].forEach((x) => limb(ctx, cx + x, cy + 220, 4, cx + x, dark, outline, 27));
-    blob(ctx, cx + 30, cy + 195, 185, 78, fur, outline, 6, -0.05);
-    poly(ctx, [[cx - 218, cy - 42], [cx - 188, cy - 175], [cx - 108, cy - 70]], fur, outline, 6);
-    poly(ctx, [[cx - 100, cy - 70], [cx - 30, cy - 176], [cx - 20, cy - 35]], fur, outline, 6);
-    poly(ctx, [[cx - 200, cy - 72], [cx - 184, cy - 146], [cx - 140, cy - 79]], dark);
-    poly(ctx, [[cx - 83, cy - 80], [cx - 39, cy - 146], [cx - 35, cy - 60]], dark);
-    poly(ctx, [[cx - 226, cy - 52], [cx - 122, cy - 92], [cx - 18, cy - 48], [cx - 52, cy + 80], [cx - 122, cy + 142], [cx - 193, cy + 75]], fur, outline, 6);
-    poly(ctx, [[cx - 207, cy + 28], [cx - 122, cy + 72], [cx - 37, cy + 28], [cx - 70, cy + 105], [cx - 122, cy + 142], [cx - 174, cy + 103]], pale);
-    [-1, 1].forEach((side) => {
-      ctx.save();
-      ctx.translate(cx - 122 + side * 54, cy - 12);
-      ctx.rotate(-side * 0.28);
-      if (P.blink > 0.45) strokePath(ctx, outline, 5, () => {
-        ctx.moveTo(-24, 0);
-        ctx.lineTo(24, 0);
-      });
-      else {
-        blob(ctx, 0, 0, 28, 13, s.eyeColorTop, outline, 3);
-        blob(ctx, 0, 0, 7, 11, "#19181b");
-      }
-      ctx.restore();
-    });
-    blob(ctx, cx - 122, cy + 119, 20, 13, s.noseColor || "#2b211c");
-  }
-  function drawPanda(P) {
-    const { ctx, cx, cy, fur, outline } = P;
-    const black = "#1c1c1e";
-    blob(ctx, cx + 202, cy + 170, 28, 28, fur, outline, 4);
-    [-100, -32, 82, 145].forEach((x) => limb(ctx, cx + x, cy + 205, 0, cx + x, black, outline, 48));
-    blob(ctx, cx + 30, cy + 180, 188, 115, fur, outline, 6);
-    blob(ctx, cx - 65, cy + 190, 65, 112, black, void 0, 5, 0.1);
-    [-1, 1].forEach((side) => blob(ctx, cx - 122 + side * 91, cy - 63, 43, 43, black, outline, 5));
-    blob(ctx, cx - 122, cy + 18, 125, 112, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      blob(ctx, cx - 122 + side * 51, cy + 5, 37, 47, black, void 0, 5, side * 0.35);
-      P.eye(cx - 122 + side * 51, cy + 4, 12, 15, "#f7f7f2");
-    });
-    blob(ctx, cx - 122, cy + 62, 23, 16, black);
-    mouth(P, cx - 122, cy + 82, 24, false);
-  }
-  function drawBunny(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const inner = s.earInnerColor || "#f2b8c6";
-    blob(ctx, cx + 205, cy + 190, 45, 45, s.tailTipColor || "#fff", outline, 5);
-    blob(ctx, cx + 50, cy + 195, 155, 130, fur, outline, 6, -0.12);
-    blob(ctx, cx + 125, cy + 260, 100, 92, fur, outline, 5);
-    blob(ctx, cx + 135, cy + 333, 105, 32, fur, outline, 5, -0.08);
-    [-1, 1].forEach((side) => {
-      ctx.save();
-      ctx.translate(cx - 105 + side * 48, cy - 38);
-      ctx.rotate(side * 0.1);
-      blob(ctx, 0, -115, 34, 150, fur, outline, 5);
-      blob(ctx, 0, -120, 15, 120, inner);
-      ctx.restore();
-    });
-    blob(ctx, cx - 95, cy + 38, 105, 100, fur, outline, 6);
-    blob(ctx, cx - 62, cy + 180, 55, 118, fur, outline, 5, -0.15);
-    limb(ctx, cx - 75, cy + 220, -12, cx - 88, fur, outline, 26);
-    limb(ctx, cx - 25, cy + 220, -10, cx - 40, fur, outline, 26);
-    [-1, 1].forEach((side) => P.eye(cx - 95 + side * 43, cy + 20, 19, 24, s.eyeColorTop));
-    poly(ctx, [[cx - 110, cy + 62], [cx - 80, cy + 62], [cx - 95, cy + 77]], s.noseColor || "#f08a9e");
-    ctx.fillStyle = "#fff";
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = 2;
-    ctx.fillRect(cx - 109, cy + 82, 28, 28);
-    ctx.strokeRect(cx - 109, cy + 82, 28, 28);
-    strokePath(ctx, outline, 2, () => {
-      ctx.moveTo(cx - 95, cy + 82);
-      ctx.lineTo(cx - 95, cy + 110);
-    });
-  }
-  function drawPenguin(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const white = s.bellyBibColor || "#fbfbf7";
-    const orange = s.noseColor || "#f0a020";
-    [-1, 1].forEach((side) => {
-      poly(ctx, [[cx + side * 115, cy - 15], [cx + side * 190, cy + 175], [cx + side * 112, cy + 125]], fur, outline, 5);
-      blob(ctx, cx + side * 62, cy + 342, 78, 25, orange, outline, 4, side * 0.1);
-    });
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 220);
-    ctx.bezierCurveTo(cx + 145, cy - 205, cx + 160, cy + 175, cx + 92, cy + 325);
-    ctx.quadraticCurveTo(cx, cy + 360, cx - 92, cy + 325);
-    ctx.bezierCurveTo(cx - 160, cy + 175, cx - 145, cy - 205, cx, cy - 220);
-    ctx.fillStyle = fur;
-    ctx.fill();
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    blob(ctx, cx, cy + 100, 100, 205, white);
-    [-1, 1].forEach((side) => {
-      blob(ctx, cx + side * 48, cy - 115, 28, 33, white);
-      P.eye(cx + side * 48, cy - 116, 11, 14, "#111318");
-    });
-    poly(ctx, [[cx - 34, cy - 67], [cx + 34, cy - 67], [cx, cy - 10]], orange, outline, 3);
-  }
-  function drawFrog(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const pale = s.bellyBibColor || "#d8efb4";
-    [-1, 1].forEach((side) => {
-      blob(ctx, cx + side * 155, cy + 240, 105, 78, fur, outline, 6, side * 0.35);
-      strokePath(ctx, outline, 39, () => {
-        ctx.moveTo(cx + side * 130, cy + 245);
-        ctx.quadraticCurveTo(cx + side * 220, cy + 260, cx + side * 235, cy + 330);
-      });
-      strokePath(ctx, fur, 29, () => {
-        ctx.moveTo(cx + side * 130, cy + 245);
-        ctx.quadraticCurveTo(cx + side * 220, cy + 260, cx + side * 235, cy + 330);
-      });
-      for (let i = -1; i <= 1; i++) blob(ctx, cx + side * (235 + i * 18), cy + 338, 24, 12, fur, outline, 3);
-      limb(ctx, cx + side * 90, cy + 170, side * 20, cx + side * 115, fur, outline, 24);
-    });
-    blob(ctx, cx, cy + 205, 175, 110, fur, outline, 6);
-    blob(ctx, cx, cy + 220, 120, 78, pale);
-    blob(ctx, cx, cy + 65, 180, 92, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      const ex = cx + side * 105;
-      blob(ctx, ex, cy - 30, 58, 62, fur, outline, 5);
-      blob(ctx, ex, cy - 28, 34, 38, "#f5f5e8", outline, 3);
-      P.eye(ex, cy - 24, 14, 20, "#16210f");
-    });
-    strokePath(ctx, outline, 7, () => {
-      ctx.moveTo(cx - 130, cy + 82);
-      ctx.quadraticCurveTo(cx, cy + 150, cx + 130, cy + 82);
-    });
-    blob(ctx, cx - 25, cy + 45, 6, 4, outline);
-    blob(ctx, cx + 25, cy + 45, 6, 4, outline);
-  }
-  function drawChiikawa(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const blue = "#8fb3cc";
-    const cower = beat(P.t, 7.8, 3.6, 5.8) * 0.7;
-    ctx.save();
-    ctx.translate(0, cower * 12);
-    ctx.rotate(cower * 0.02);
-    blob(ctx, cx + 118, cy + 190, 36, 36, blue, outline, 4);
-    blob(ctx, cx, cy + 215, 110, 120, fur, outline, 5);
-    [-1, 1].forEach((rawSide) => {
-      const side = rawSide;
-      const elbow = followBeat2d(P.t, 7.8, 3.6, 5.8, 0.12) * 0.7;
-      const wrist = followBeat2d(P.t, 7.8, 3.6, 5.8, 0.24) * 0.7;
-      softLimb2d(ctx, cx + side * 98, cy + 152, {
-        length: 96,
-        width: 38,
-        shoulder: side * (0.12 + cower * 0.42),
-        elbow: side * (0.1 + elbow * 0.24 + wrist * 0.08),
-        pawRx: 27,
-        pawRy: 20,
-        fur,
-        pawColor: fur,
-        outline,
-        side,
-        tap: side < 0 ? P.tapLeft : P.tapRight
-      });
-      softLimb2d(ctx, cx + side * 46, cy + 278, {
-        length: 48,
-        width: 42,
-        shoulder: 0,
-        elbow: 0,
-        pawRx: 40,
-        pawRy: 22,
-        fur,
-        pawColor: shade(fur, -8),
-        outline,
-        side
-      });
-      blob(ctx, cx + side * 103, cy - 155, 38, 37, fur, outline, 5);
-    });
-    blob(ctx, cx, cy - 40, 160, 145, fur, outline, 6);
-    blob(ctx, cx - 66, cy - 158, 62, 43, blue, outline, 5, -0.22);
-    blob(ctx, cx + 66, cy - 158, 62, 43, blue, outline, 5, 0.22);
-    blob(ctx, cx, cy - 150, 22, 20, blue, outline, 4);
-    strokePath(ctx, blue, 18, () => {
-      ctx.moveTo(cx - 108, cy - 130);
-      ctx.quadraticCurveTo(cx, cy - 92, cx + 108, cy - 130);
-    });
-    [-1, 1].forEach((side) => {
-      P.eye(cx + side * 60, cy - 50, 17, 23, s.eyeColorTop);
-      if (s.blushColor) {
-        blob(ctx, cx + side * 106, cy + 10, 27, 14, s.blushColor || "#ffb3bf");
-        for (let i = 0; i < 3; i++) {
-          strokePath(ctx, "#e0708c", 3, () => {
-            ctx.moveTo(cx + side * (94 + i * 11), cy + 2);
-            ctx.lineTo(cx + side * (97 + i * 11), cy + 18);
-          });
-        }
-      }
-    });
-    strokePath(ctx, s.mouthColor || outline, 4, () => {
-      ctx.moveTo(cx - 19, cy + 26);
-      ctx.quadraticCurveTo(cx - 9, cy + 39, cx, cy + 28);
-      ctx.quadraticCurveTo(cx + 9, cy + 39, cx + 19, cy + 26);
-    });
-    blob(ctx, cx, cy + 48, 5, 5, s.mouthColor || outline);
-    ctx.restore();
-  }
-  function drawGrassCow(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const dark = s.furSecondaryColor || "#1b1b1e";
-    const shock = beat(P.t, 8.4, 2.8, 4.8);
-    ctx.save();
-    ctx.translate(0, shock * 12);
-    blob(ctx, cx, cy + 195, 150, 100, fur, outline, 6);
-    blob(ctx, cx - 125, cy + 175, 45, 45, dark, void 0, 4, 0.3);
-    [-95, -35, 40, 100].forEach((x, i) => {
-      const side = i < 2 ? -1 : 1;
-      const delayed = followBeat2d(P.t, 8.4, 2.8, 4.8, i % 2 === 0 ? 0.1 : 0.22);
-      softLimb2d(ctx, cx + x, cy + 258, {
-        length: 70,
-        width: 34,
-        shoulder: 0,
-        elbow: side * delayed * 0.1,
-        pawRx: 24,
-        pawRy: 14,
-        fur,
-        pawColor: dark,
-        outline,
-        side
-      });
-    });
-    blob(ctx, cx - 158, cy - 55, 52, 26, "#6d6d70", outline, 5, -0.25);
-    blob(ctx, cx + 158, cy - 55, 52, 26, "#6d6d70", outline, 5, 0.25);
-    blob(ctx, cx, cy + 10, 152, 128, fur, outline, 6);
-    blob(ctx, cx - 95, cy - 78, 62, 35, dark, void 0, 5, -0.25);
-    blob(ctx, cx + 100, cy - 74, 45, 30, dark, void 0, 5, 0.22);
-    ctx.save();
-    ctx.translate(cx, cy - 103);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = "#f7f4ee";
-    ctx.fillRect(-11, -11, 22, 22);
-    ctx.restore();
-    strokePath(ctx, dark, 10, () => {
-      ctx.moveTo(cx, cy - 92);
-      ctx.lineTo(cx, cy - 38);
-    });
-    [-1, 1].forEach((side) => {
-      P.eye(cx + side * 58, cy - 10 + shock * 4, 13, 17 + shock * 5, s.eyeColorTop);
-      strokePath(ctx, dark, 13, () => {
-        ctx.moveTo(cx + side * 22, cy - 55);
-        ctx.lineTo(cx + side * 108, cy - 82);
-      });
-    });
-    blob(ctx, cx, cy + 66, 78, 44, s.noseColor || "#e8a0a8", outline, 4);
-    [-1, 1].forEach((side) => blob(ctx, cx + side * 30, cy + 58, 9, 7, "#9d5d68"));
-    blob(ctx, cx, cy + 116, 32, 39, "#2b1f22", "#d98fa0", 7);
-    blob(ctx, cx, cy + 153, 9, 5, "#2b1f22");
-    ctx.restore();
-  }
-  function drawMilkDragon(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const pale = s.bellyBibColor || "#fff0b8";
-    const wobble = Math.sin(P.t * 2.5) * 0.04;
-    const duang = beat(P.t, 8.6, 3.2, 5.4);
-    blob(ctx, cx, cy + 200, 158, 156, fur, outline, 6);
-    ctx.save();
-    ctx.translate(cx, cy + 224);
-    ctx.scale(1 + wobble + duang * 0.08, 1 - wobble * 0.7 - duang * 0.06);
-    blob(ctx, 0, 0, 100, 116, pale);
-    ctx.restore();
-    [-1, 1].forEach((rawSide) => {
-      const side = rawSide;
-      const wave = duang * 10 + Math.sin(P.t * 2.6 + side) * 5;
-      const elbow = followBeat2d(P.t, 8.6, 3.2, 5.4, 0.12);
-      const wrist = followBeat2d(P.t, 8.6, 3.2, 5.4, 0.24);
-      softLimb2d(ctx, cx + side * 116, cy + 158 - wave, {
-        length: 96,
-        width: 46,
-        shoulder: -side * (0.42 + duang * 0.16),
-        elbow: -side * (0.1 + elbow * 0.26 + wrist * 0.1),
-        pawRx: 30,
-        pawRy: 22,
-        fur,
-        pawColor: fur,
-        outline,
-        clawColor: "#6b3a1f",
-        clawCount: 3,
-        side,
-        tap: side < 0 ? P.tapLeft : P.tapRight
-      });
-      softLimb2d(ctx, cx + side * 70, cy + 272, {
-        length: 56,
-        width: 52,
-        shoulder: 0,
-        elbow: 0,
-        pawRx: 46,
-        pawRy: 24,
-        fur,
-        pawColor: fur,
-        outline,
-        clawColor: "#6b3a1f",
-        clawCount: 3,
-        side
-      });
-    });
-    blob(ctx, cx, cy - 42, 154, 132, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      P.eye(cx + side * 60, cy - 54, 23, 27, "#151515");
-    });
-    mouthArc(P, cx, cy + 42, 30, 3, 12);
-  }
-  function drawCapybara(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const dark = shade(fur, -22);
-    const wave = beat(P.t, 6.4, 2, 4.6);
-    const lean = Math.sin(P.t * 0.48) * 0.03;
-    ctx.save();
-    ctx.rotate(lean);
-    [-90, -30, 55, 115].forEach((x, i) => {
-      const side = i < 2 ? -1 : 1;
-      softLimb2d(ctx, cx + x, cy + 272, {
-        length: 64,
-        width: 38,
-        shoulder: 0,
-        elbow: 0,
-        pawRx: 24,
-        pawRy: 16,
-        fur: dark,
-        pawColor: dark,
-        outline,
-        side
-      });
-    });
-    blob(ctx, cx + 15, cy + 205, 190, 105, fur, outline, 6);
-    blob(ctx, cx + 15, cy + 258, 145, 42, "#a9602e", outline, 5);
-    strokePath(ctx, shade("#a9602e", -22), 4, () => {
-      ctx.moveTo(cx - 55, cy + 275);
-      ctx.quadraticCurveTo(cx - 20, cy + 248, cx + 5, cy + 272);
-      ctx.moveTo(cx + 55, cy + 275);
-      ctx.quadraticCurveTo(cx + 88, cy + 250, cx + 110, cy + 270);
-    });
-    const capyElbow = followBeat2d(P.t, 6.4, 2, 4.6, 0.12);
-    const capyWrist = followBeat2d(P.t, 6.4, 2, 4.6, 0.24);
-    softLimb2d(ctx, cx + 155, cy + 205, {
-      length: 88,
-      width: 42,
-      shoulder: -0.95 - wave * 0.35,
-      elbow: -(capyElbow * 0.28 + capyWrist * 0.12),
-      pawRx: 24,
-      pawRy: 18,
-      fur,
-      pawColor: fur,
-      outline,
-      side: 1,
-      tap: P.tapRight
-    });
-    ctx.save();
-    ctx.translate(cx - 20, cy + 55);
-    ctx.rotate(lean + wave * 0.02);
-    blob(ctx, 0, -8, 106, 110, fur, outline, 6);
-    blob(ctx, 0, 40, 100, 80, "#f59b1f", outline, 6);
-    [-1, 1].forEach((side) => {
-      blob(ctx, side * 73, -82, 24, 22, dark, outline, 4);
-      blob(ctx, side * 71, -86, 11, 10, shade(fur, -34));
-      P.eye(side * 47, -14, 12, 15, "#151515");
-    });
-    mouthArc(P, 0, 68, 22, 4, 14);
-    ctx.restore();
-    const ox = cx - 20 + Math.sin(P.t * 0.9) * 7;
-    ctx.save();
-    ctx.translate(ox, cy - 82);
-    ctx.rotate(Math.sin(P.t * 1.35) * 0.12 + lean);
-    blob(ctx, 0, 0, 34, 31, "#f5883a", outline, 4);
-    blob(ctx, -10, -8, 12, 8, "#ffd06b");
-    strokePath(ctx, "#5a8f32", 5, () => {
-      ctx.moveTo(2, -26);
-      ctx.lineTo(12, -40);
-    });
-    blob(ctx, 19, -38, 12, 6, "#68a541", void 0, 0, -0.5);
-    ctx.restore();
-    ctx.restore();
-  }
-  function drawLoopy(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const darkPaw = "#51283c";
-    const wave = beat(P.t, 9.2, 3.8, 6.6);
-    ctx.save();
-    ctx.translate(cx + 165, cy + 270);
-    ctx.rotate(-0.45 + Math.sin(P.t * 1.8) * 0.05);
-    blob(ctx, 60, 25, 105, 55, shade(fur, -20), outline, 5);
-    for (let i = -2; i <= 2; i++) {
-      strokePath(ctx, shade(fur, -38), 3, () => {
-        ctx.moveTo(i * 32 + 60, -12);
-        ctx.lineTo(i * 32 + 92, 62);
-      });
-      strokePath(ctx, shade(fur, -38), 3, () => {
-        ctx.moveTo(i * 32 + 60, 62);
-        ctx.lineTo(i * 32 + 92, -12);
-      });
-    }
-    ctx.restore();
-    blob(ctx, cx, cy + 205, 135, 140, fur, outline, 5);
-    blob(ctx, cx, cy + 240, 82, 92, "#f3e3e6");
-    [-1, 1].forEach((rawSide) => {
-      const side = rawSide;
-      const raised = side < 0;
-      const elbow = followBeat2d(P.t, 9.2, 3.8, 6.6, 0.12);
-      const wrist = followBeat2d(P.t, 9.2, 3.8, 6.6, 0.24);
-      softLimb2d(ctx, cx + side * 122, cy + 158, {
-        length: 96,
-        width: 42,
-        shoulder: raised ? 0.85 + wave * 0.3 : -side * 0.15,
-        elbow: raised ? elbow * 0.28 + wrist * 0.12 : -side * (0.08 + elbow * 0.1),
-        pawRx: 24,
-        pawRy: 18,
-        fur,
-        pawColor: darkPaw,
-        outline,
-        clawColor: darkPaw,
-        clawCount: 3,
-        side,
-        tap: side < 0 ? P.tapLeft : P.tapRight
-      });
-      softLimb2d(ctx, cx + side * 62, cy + 280, {
-        length: 52,
-        width: 46,
-        shoulder: 0,
-        elbow: 0,
-        pawRx: 42,
-        pawRy: 22,
-        fur,
-        pawColor: darkPaw,
-        outline,
-        side
-      });
-      blob(ctx, cx + side * 140, cy - 80, 31, 33, fur, outline, 4);
-      blob(ctx, cx + side * 140, cy - 80, 15, 16, "#f7d9df", outline, 2);
-    });
-    blob(ctx, cx, cy - 35, 155, 135, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      const sway = Math.sin(P.t * 2.1 + side) * 8;
-      poly(ctx, [
-        [cx + side * 18, cy - 156],
-        [cx + side * 50, cy - 214],
-        [cx + side * 40 + sway, cy - 252],
-        [cx + side * 30 + sway, cy - 210]
-      ], "#e8752f", outline, 3);
-      blob(ctx, cx + side * 40 + sway, cy - 250, 11, 13, "#e8752f");
-    });
-    [-1, 1].forEach((side) => {
-      P.eye(cx + side * 60, cy - 45, 17, 22, "#151515");
-    });
-    blob(ctx, cx, cy + 12, 26, 21, "#6d1d53", outline, 3);
-    blob(ctx, cx, cy + 58, 36, 26, "#7a2a48", outline, 3);
-    ctx.fillStyle = "#fffdf5";
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = 2.5;
-    ctx.fillRect(cx - 20, cy + 46, 17, 18);
-    ctx.strokeRect(cx - 20, cy + 46, 17, 18);
-    ctx.fillRect(cx + 3, cy + 46, 17, 18);
-    ctx.strokeRect(cx + 3, cy + 46, 17, 18);
-  }
-  function drawBubu(P) {
-    const { ctx, cx, cy, s, fur, outline } = P;
-    const nod = Math.sin(P.t * 0.85) * 5;
-    const wave = beat(P.t, 7.6, 3.4, 5.8);
-    blob(ctx, cx, cy + 205, 140, 145, fur, outline, 5);
-    blob(ctx, cx - 34, cy + 118, 38, 24, "#f2c14e", outline, 4, -0.18);
-    blob(ctx, cx + 34, cy + 118, 38, 24, "#f2c14e", outline, 4, 0.18);
-    blob(ctx, cx, cy + 118, 15, 15, "#f2c14e", outline, 3);
-    [-1, 1].forEach((rawSide) => {
-      const side = rawSide;
-      const elbow = followBeat2d(P.t, 7.6, 3.4, 5.8, 0.12);
-      const wrist = followBeat2d(P.t, 7.6, 3.4, 5.8, 0.24);
-      softLimb2d(ctx, cx + side * 118, cy + 158 - (side > 0 ? wave * 28 : 0), {
-        length: 104,
-        width: 46,
-        shoulder: -side * (0.15 + (side > 0 ? wave * 0.72 : 0)),
-        elbow: -side * (0.1 + elbow * 0.22 + wrist * 0.1),
-        pawRx: 30,
-        pawRy: 22,
-        fur,
-        pawColor: shade(fur, -12),
-        outline,
-        side,
-        tap: side < 0 ? P.tapLeft : P.tapRight
-      });
-      softLimb2d(ctx, cx + side * 62, cy + 275, {
-        length: 56,
-        width: 48,
-        shoulder: 0,
-        elbow: 0,
-        pawRx: 42,
-        pawRy: 22,
-        fur,
-        pawColor: shade(fur, -20),
-        outline,
-        side
-      });
-      blob(ctx, cx + side * 108, cy - 150, 50, 50, fur, outline, 5);
-      blob(ctx, cx + side * 108, cy - 150, 25, 25, s.earInnerColor || "#5b3a24");
-    });
-    strokePath(ctx, "#6b9a4a", 7, () => {
-      ctx.moveTo(cx - 150, cy + 200);
-      ctx.lineTo(cx - 176, cy + 118);
-    });
-    blob(ctx, cx - 162, cy + 165, 24, 11, "#6b9a4a", void 0, 0, -0.5);
-    for (let i = 0; i < 6; i++) {
-      const a = i / 6 * Math.PI * 2;
-      blob(ctx, cx - 176 + Math.cos(a) * 20, cy + 100 + Math.sin(a) * 20, 20, 20, "#e05260", outline, 2);
-    }
-    blob(ctx, cx - 176, cy + 100, 14, 14, "#e05260", outline, 2);
-    ctx.save();
-    ctx.translate(0, nod + wave * 3);
-    blob(ctx, cx, cy - 35, 150, 135, fur, outline, 6);
-    [-1, 1].forEach((side) => {
-      P.eye(cx + side * 58, cy - 45, 12, 15, "#151515");
-      blob(ctx, cx + side * 112, cy + 8, 33, 21, "#e6a96f");
-      for (let i = 0; i < 2; i++) {
-        strokePath(ctx, "#c9864f", 3, () => {
-          ctx.moveTo(cx + side * (99 + i * 14), cy + 1);
-          ctx.lineTo(cx + side * (103 + i * 14), cy + 16);
-        });
-      }
-    });
-    strokePath(ctx, s.mouthColor || outline, 3.5, () => {
-      ctx.moveTo(cx - 16, cy + 30);
-      ctx.quadraticCurveTo(cx - 8, cy + 40, cx, cy + 30);
-      ctx.quadraticCurveTo(cx + 8, cy + 40, cx + 16, cy + 30);
-    });
-    ctx.restore();
+  function chibi(species) {
+    return (p) => drawChibiSpecies(
+      p.ctx,
+      p.s,
+      species,
+      p.t,
+      p.expression,
+      p.blink,
+      p.squint,
+      p.tapLeft,
+      p.tapRight,
+      p.reach
+    );
   }
   var RENDERERS = {
-    cat: drawCat,
-    dog: drawDog,
-    fox: drawFox,
-    panda: drawPanda,
-    bunny: drawBunny,
-    penguin: drawPenguin,
-    frog: drawFrog,
-    chiikawa: drawChiikawa,
-    grasscow: drawGrassCow,
-    milkdragon: drawMilkDragon,
-    capybara: drawCapybara,
-    loopy: drawLoopy,
-    bubu: drawBubu
+    cat: chibi("cat"),
+    dog: chibi("dog"),
+    fox: chibi("fox"),
+    panda: chibi("panda"),
+    bunny: chibi("bunny"),
+    penguin: chibi("penguin"),
+    frog: chibi("frog"),
+    chiikawa: chibi("chiikawa"),
+    grasscow: chibi("grasscow"),
+    milkdragon: chibi("milkdragon"),
+    capybara: chibi("capybara"),
+    loopy: chibi("loopy"),
+    bubu: chibi("bubu")
   };
   function renderSpecies2d(ctx, o) {
     const { skin, w, h, time, breath, blink, sleep, squint, mood, moodAmt } = o;
@@ -957,6 +914,22 @@
     const tapPhase = time * (9.2 + typing * 4.5);
     const tapLeft = typing * Math.max(0, Math.sin(tapPhase));
     const tapRight = typing * Math.max(0, -Math.sin(tapPhase));
+    let reach;
+    if (o.handReach !== void 0) {
+      reach = Math.max(0, Math.min(1, o.handReach));
+    } else {
+      if (!chibiTimeInit) {
+        chibiTimeInit = true;
+        chibiPrevTime = time;
+      }
+      const dt = Math.max(0, Math.min(0.05, time - chibiPrevTime));
+      chibiPrevTime = time;
+      if (typing > 0.01) chibiLastTyping = time;
+      const want = time - chibiLastTyping < 0.5 ? 1 : 0;
+      const rate = want > chibiReach ? 12 : 4.5;
+      chibiReach += (want - chibiReach) * (1 - Math.exp(-rate * dt));
+      reach = chibiReach;
+    }
     const species = resolveSpecies(skin.species);
     const fur = normHex(skin.furColor);
     const outline = skin.outlineColor ? normHex(skin.outlineColor) : shade(fur, -55);
@@ -1029,6 +1002,7 @@
       expression: pickExpression2d(time, mood, moodAmt, sleep),
       tapLeft,
       tapRight,
+      reach,
       eye: (x, y, rx, ry, color) => drawEye(P, x, y, rx, ry, color)
     };
     (RENDERERS[species] || drawCat)(P);
@@ -1083,7 +1057,7 @@
   // tools/species-preview-entry.ts
   window.KuroSpecies2D = {
     render: renderSpeciesPreview2d,
-    renderWith: (ctx, skin, w, h, time, mood, typing) => renderSpecies2d(ctx, {
+    renderWith: (ctx, skin, w, h, time, mood, typing, handReach) => renderSpecies2d(ctx, {
       skin: resolveCustomSkin(skin),
       w,
       h,
@@ -1094,7 +1068,8 @@
       squint: 0,
       mood,
       moodAmt: mood === "idle" ? 0 : 1,
-      typing
+      typing,
+      handReach
     })
   };
 })();

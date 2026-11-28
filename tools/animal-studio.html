@@ -813,6 +813,7 @@ init();
   var shotMood = qs.get('mood');
   var shotTyping = qs.get('typing') ? 1 : 0;
   var shotTime = parseFloat(qs.get('t') || '2') || 2;
+  var shotReach = qs.has('reach') ? parseFloat(qs.get('reach')) : undefined;
   var style = document.createElement('style');
   style.textContent = 'html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f4f1eb}';
   document.head.appendChild(style);
@@ -821,11 +822,11 @@ init();
   document.body.appendChild(cv); // move to the end so it covers the studio UI
   loadPreset(key);
   requestAnimationFrame(function () { requestAnimationFrame(function () {
-    if (shotMood || shotTyping || qs.has('t')) {
+    if (shotMood || shotTyping || qs.has('t') || shotReach !== undefined) {
       var cv2 = document.getElementById('preview');
       window.KuroSpecies2D.renderWith(
         cv2.getContext('2d'), state, cv2.width, cv2.height,
-        shotTime, shotMood || 'idle', shotTyping,
+        shotTime, shotMood || 'idle', shotTyping, shotReach,
       );
     } else {
       drawPet();

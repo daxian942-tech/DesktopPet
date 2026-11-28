@@ -9,6 +9,7 @@ import {
   type CatSkinConfig,
   type ResolvedSkin,
 } from './catSkins';
+import { drawChibiSpecies } from './chibi2d';
 
 export type PetMood = 'idle' | 'happy' | 'eat' | 'drink' | 'play' | 'bath' | 'sleep';
 
@@ -25,6 +26,8 @@ export interface SpeciesRenderOptions {
   moodAmt: number;
   /** 0..1 typing intensity; drives alternating paw taps. */
   typing?: number;
+  /** 0..1 手伸到键盘的进度；不传时按 typing 状态机自动推进（预览/截图可固定）。 */
+  handReach?: number;
 }
 
 interface Palette {
@@ -42,10 +45,20 @@ interface Palette {
   expression: FaceExpression2d;
   tapLeft: number;
   tapRight: number;
+  /** 手伸到键盘的进度：0 收起/抱胸，1 按到键盘 */
+  reach: number;
   eye: (x: number, y: number, rx: number, ry: number, color?: string) => void;
 }
 
 type FaceExpression2d = 'idle' | 'happy' | 'love' | 'surprised' | 'angry' | 'worried';
+
+// 2D 打字手伸缩状态机，语义与 3D speciesModel3d.ts 的 handReach 一致：
+// 打字时伸出、停手 0.5s 后柔和收回；伸出快、收回慢。
+// 模块级是因为 renderSpecies2d 每帧只画一次，进度必须跨帧保留。
+let chibiReach = 0;
+let chibiLastTyping = -100;
+let chibiPrevTime = 0;
+let chibiTimeInit = false;
 
 function pickExpression2d(t: number, mood: PetMood, moodAmt: number, sleep: number): FaceExpression2d {
   if (sleep > 0.5) return 'idle';
@@ -777,20 +790,30 @@ function drawBubu(P: Palette): void {
   ctx.restore();
 }
 
+/**
+ * 全部物种迁到统一 Q 版纯色无描边绘制（和 3D 同视觉语言）。
+ * 旧版 drawXxx 函数保留在文件里作演进参考，不再被调用。
+ */
+function chibi(species: AnimalSpecies): (p: Palette) => void {
+  return (p) => drawChibiSpecies(
+    p.ctx, p.s, species, p.t, p.expression,
+    p.blink, p.squint, p.tapLeft, p.tapRight, p.reach,
+  );
+}
 const RENDERERS: Record<AnimalSpecies, (p: Palette) => void> = {
-  cat: drawCat,
-  dog: drawDog,
-  fox: drawFox,
-  panda: drawPanda,
-  bunny: drawBunny,
-  penguin: drawPenguin,
-  frog: drawFrog,
-  chiikawa: drawChiikawa,
-  grasscow: drawGrassCow,
-  milkdragon: drawMilkDragon,
-  capybara: drawCapybara,
-  loopy: drawLoopy,
-  bubu: drawBubu,
+  cat: chibi('cat'),
+  dog: chibi('dog'),
+  fox: chibi('fox'),
+  panda: chibi('panda'),
+  bunny: chibi('bunny'),
+  penguin: chibi('penguin'),
+  frog: chibi('frog'),
+  chiikawa: chibi('chiikawa'),
+  grasscow: chibi('grasscow'),
+  milkdragon: chibi('milkdragon'),
+  capybara: chibi('capybara'),
+  loopy: chibi('loopy'),
+  bubu: chibi('bubu'),
 };
 
 export function isIndependentSpecies(skin: ResolvedSkin | null): skin is ResolvedSkin {
@@ -805,6 +828,22 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
   const tapPhase = time * (9.2 + typing * 4.5);
   const tapLeft = typing * Math.max(0, Math.sin(tapPhase));
   const tapRight = typing * Math.max(0, -Math.sin(tapPhase));
+
+  // 手伸缩：预览 / 截图可用 handReach 固定关键帧；正式运行走时间状态机。
+  let reach: number;
+  if (o.handReach !== undefined) {
+    reach = Math.max(0, Math.min(1, o.handReach));
+  } else {
+    if (!chibiTimeInit) { chibiTimeInit = true; chibiPrevTime = time; }
+    const dt = Math.max(0, Math.min(0.05, time - chibiPrevTime));
+    chibiPrevTime = time;
+    if (typing > 0.01) chibiLastTyping = time;
+    const want = time - chibiLastTyping < 0.5 ? 1 : 0;
+    const rate = want > chibiReach ? 12 : 4.5;
+    chibiReach += (want - chibiReach) * (1 - Math.exp(-rate * dt));
+    reach = chibiReach;
+  }
+
   const species = resolveSpecies(skin.species);
   const fur = normHex(skin.furColor);
   const outline = skin.outlineColor ? normHex(skin.outlineColor) : shade(fur, -55);
@@ -864,6 +903,7 @@ export function renderSpecies2d(ctx: CanvasRenderingContext2D, o: SpeciesRenderO
     expression: pickExpression2d(time, mood, moodAmt, sleep),
     tapLeft,
     tapRight,
+    reach,
     eye: (x, y, rx, ry, color) => drawEye(P, x, y, rx, ry, color),
   };
   (RENDERERS[species] || drawCat)(P);

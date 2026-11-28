@@ -11,12 +11,13 @@ interface PreviewApi {
     time: number,
     mood: PetMood,
     typing: number,
+    handReach?: number,
   ) => void;
 }
 
 (window as unknown as { KuroSpecies2D: PreviewApi }).KuroSpecies2D = {
   render: renderSpeciesPreview2d,
-  renderWith: (ctx, skin, w, h, time, mood, typing) => renderSpecies2d(ctx, {
+  renderWith: (ctx, skin, w, h, time, mood, typing, handReach) => renderSpecies2d(ctx, {
     skin: resolveCustomSkin(skin),
     w,
     h,
@@ -28,5 +29,6 @@ interface PreviewApi {
     mood,
     moodAmt: mood === 'idle' ? 0 : 1,
     typing,
+    handReach,
   }),
 };
